@@ -1,0 +1,49 @@
+﻿@font-face {
+	font-family: 'Libre Calson Regular';
+	src: url('fonts/LibreCaslonText-Regular.ttf');
+}
+
+body {
+	background-color: #1B1B1B;
+	color: #b2b2b2;
+	font-size: 1.8em;
+	margin: 0 13% 0 13%;
+	text-align: justify;
+	font-family: 'Libre Calson Regular';
+}
+
+.data-chapter-title {
+	text-align: center;
+	font-weight: bolder;
+	font-size: 2em;
+}
+
+#navigation-container {
+	position: fixed;
+	top: 0px;
+	right: 10px;
+}
+
+#navigation-container li {
+	margin: 2% 0;
+}
+
+#navigation-input {
+	margin: 3% 0;
+	border-radius: 5px;
+}
+
+#navigation-container > ul {
+	font-size: 0.8em;
+	color: #c0c0c0;
+	padding: 30px;
+	background-color: rgba(60, 60, 60, 0.99);
+	list-style-type: none;
+	border-radius: 10px;
+}
+
+@media (orientation: portrait) {
+	body {
+		margin: 0 3% 0 3%;
+	}
+}

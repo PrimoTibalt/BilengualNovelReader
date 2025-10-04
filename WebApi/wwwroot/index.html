@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<head>
+	<link rel="stylesheet" href="./realTimeReader.css" />
+	<link rel="stylesheet" href="./interactive-select/styles.css" />
+</head>
+<body>
+	<nav id="navigation-container" aria-label="Navigate through your novels, search new novels">
+		<ul class="navigation-list">
+			<input id="navigation-input" type="search" placeholder="Search desired option" />
+			<li tabindex="1" data-item-id="1">Select chapter of current novel</li>
+			<li tabindex="2" data-item-id="2">Choose from novels you've read</li>
+			<li tabindex="3" data-item-id="3">Search new novels</li>
+		</ul>
+	</nav>
+	<article id="novel-paragraphs" aria-label="Novel paragraphs">
+
+	</article>
+	<script src="./realTimeReader.js" type="module"></script>
+	<script src="./lib/microsoft-signalr/signalr.min.js"></script>
+	<script src="./interactive-select/module.js" type="module"></script>
+	<script src="./interactive-select/vim-motioned.js" type="module"></script>
+</body>

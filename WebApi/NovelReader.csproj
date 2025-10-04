@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="wwwroot\lib\microsoft-signalr\signalr.min.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="wwwroot\fonts\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NovelReader.Data.Mongo\NovelReader.Data.Mongo.csproj" />
+    <ProjectReference Include="..\NovelReader.Domain\NovelReader.Domain.csproj" />
+    <ProjectReference Include="..\NovelReader.Retrievers\NovelReader.Retrievers.csproj" />
+  </ItemGroup>
+
+</Project>
