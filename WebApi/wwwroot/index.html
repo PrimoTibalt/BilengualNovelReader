@@ -1,22 +1,31 @@
 <!DOCTYPE html>
+<html lang="en">
 <head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Novel Reader</title>
+	<!-- tui.css defines the palette both panels below draw from; it must come first. -->
+	<link rel="stylesheet" href="./tui.css" />
 	<link rel="stylesheet" href="./realTimeReader.css" />
 	<link rel="stylesheet" href="./interactive-select/styles.css" />
+	<link rel="stylesheet" href="./definition-box.css" />
 </head>
 <body>
-	<nav id="navigation-container" aria-label="Navigate through your novels, search new novels">
-		<ul class="navigation-list">
-			<input id="navigation-input" type="search" placeholder="Search desired option" />
-			<li tabindex="1" data-item-id="1">Select chapter of current novel</li>
-			<li tabindex="2" data-item-id="2">Choose from novels you've read</li>
-			<li tabindex="3" data-item-id="3">Search new novels</li>
-		</ul>
-	</nav>
+	<!--
+		The menu is built by src/interactive-select/module.ts when `n` opens it, so that the
+		panel, its breadcrumb and its option rows have one definition rather than two.
+	-->
+	<nav id="navigation-container" aria-label="Navigate through your novels, search new novels" hidden></nav>
+	<div id="navigation-affordance" class="navigation-affordance" aria-hidden="true">
+		<span class="navigation-affordance__key">n</span>navigate
+	</div>
 	<article id="novel-paragraphs" aria-label="Novel paragraphs">
 
 	</article>
-	<script src="./realTimeReader.js" type="module"></script>
+
+	<!-- Classic script: defines the global `signalR`. Must run before the module that uses it. -->
 	<script src="./lib/microsoft-signalr/signalr.min.js"></script>
-	<script src="./interactive-select/module.js" type="module"></script>
-	<script src="./interactive-select/vim-motioned.js" type="module"></script>
+	<!-- Entry point; it imports the interactive-select and reading modules itself. -->
+	<script src="./realTimeReader.js" type="module"></script>
 </body>
+</html>

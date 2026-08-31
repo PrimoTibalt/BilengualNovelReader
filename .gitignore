@@ -484,3 +484,12 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# TypeScript client build output — sources live in WebApi/src, emitted by tsc
+WebApi/wwwroot/**/*.js
+WebApi/wwwroot/**/*.js.map
+
+# Local SQLite account store (created on first run).
+*.db
+*.db-shm
+*.db-wal

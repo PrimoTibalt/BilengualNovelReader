@@ -1,3 +1,211 @@
+/*
+ * The navigation menu, drawn as the same TUI panel as the definition box: sharp corners,
+ * a titled header with a position counter, a body, and a hint bar along the bottom.
+ * Palette comes from tui.css.
+ *
+ * The panel is keyboard-driven, so the selected row — not the mouse — carries the emphasis:
+ * a caret in the gutter plus a tinted band, the way a terminal list marks its cursor.
+ */
+
+#navigation-container {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	z-index: 90;
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	line-height: 1.5;
+	color: var(--tui-text);
+	text-align: left;
+	width: min(46ch, calc(100vw - 24px));
+}
+
+.navigation-panel {
+	background-color: var(--tui-bg);
+	border: 2px solid var(--tui-border);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.navigation-panel__header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 1em;
+	padding: 0.5em 0.75em;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+/* Breadcrumb: "navigation / chapters". The trail is dim, the current screen is not. */
+.navigation-panel__title {
+	font-weight: 700;
+	color: var(--tui-accent);
+	word-break: break-word;
+}
+
+.navigation-panel__trail {
+	color: var(--tui-dim);
+	font-weight: 400;
+}
+
+.navigation-panel__counter {
+	color: var(--tui-dim);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.navigation-panel__filter-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5em;
+	padding: 0.4em 0.75em;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+/* The `/` sits in the gutter like a terminal prompt and brightens while the field has focus. */
+.navigation-panel__filter-prompt {
+	color: var(--tui-dim);
+}
+
+.navigation-panel__filter-row:focus-within .navigation-panel__filter-prompt {
+	color: var(--tui-accent);
+}
+
+.navigation-panel__filter {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: none;
+	outline: none;
+	padding: 0;
+	color: var(--tui-text);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+}
+
+.navigation-panel__filter::placeholder {
+	color: var(--tui-dim);
+}
+
+.navigation-panel__filter::-webkit-search-cancel-button {
+	display: none;
+}
+
+.navigation-panel__body {
+	max-height: min(50vh, 24em);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.navigation-list {
+	margin: 0;
+	padding: 0.35em 0;
+	list-style-type: none;
+}
+
+.navigation-list__option {
+	display: flex;
+	align-items: baseline;
+	gap: 1em;
+	padding: 0.15em 0.75em 0.15em 0;
+	cursor: pointer;
+}
+
+/* Gutter for the caret, so labels stay aligned whether or not a row is selected. */
+.navigation-list__option::before {
+	content: " ";
+	display: inline-block;
+	width: 1.5ch;
+	flex: none;
+	text-align: center;
+	color: var(--tui-accent);
+	white-space: pre;
+}
+
+/*
+ * One row, one line. The label takes what is left after the detail column, and is clipped
+ * rather than wrapped — a list whose rows change height as you filter is hard to read.
+ */
+.navigation-list__label {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+/*
+ * A label that does not fit fades out instead of being cut off mid-glyph or ellipsised. The
+ * gradient starts two characters from the end of the row, so the name visibly runs out of
+ * space rather than looking truncated — and the rank and length keep their place on the line.
+ *
+ * The class is applied by the menu only when the text actually overflows; a mask is on the
+ * element box, which for a short name would otherwise fade empty space.
+ */
+.navigation-list__label--faded {
+	-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2ch), transparent 100%);
+	mask-image: linear-gradient(to right, #000 calc(100% - 2ch), transparent 100%);
+}
+
+/* Never squeezed out by a long name: this is the part the reader is comparing rows on. */
+.navigation-list__detail {
+	flex: none;
+	color: var(--tui-dim);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
 .navigation-list-option-selected {
-	background-color: rgb(255 10 10 / 10%);
+	background-color: var(--tui-selection);
+	color: var(--tui-text);
+}
+
+.navigation-list-option-selected::before {
+	content: ">";
+}
+
+.navigation-list-option-selected .navigation-list__label {
+	color: var(--tui-accent);
+}
+
+/* Substring the filter matched, picked out of the label. */
+.navigation-list__match {
+	color: var(--tui-accent);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+.navigation-panel__message {
+	margin: 0;
+	padding: 0.75em;
+	color: var(--tui-dim);
+}
+
+.navigation-panel__hints {
+	padding: 0.45em 0.75em;
+	border-top: 1px solid var(--tui-rule);
+	color: var(--tui-dim);
+	font-size: 0.9em;
+}
+
+/*
+ * Closed-state affordance. The menu used to sit open on the page; now that it is a mode,
+ * this is what tells the reader the key exists.
+ */
+.navigation-affordance {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	z-index: 80;
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	color: var(--tui-dim);
+	pointer-events: none;
+	user-select: none;
+}
+
+.navigation-affordance__key {
+	border: 1px solid var(--tui-rule);
+	padding: 0 0.4em;
+	margin-right: 0.4em;
+	color: var(--tui-text);
 }

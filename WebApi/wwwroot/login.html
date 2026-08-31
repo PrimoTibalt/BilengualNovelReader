@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Novel Reader — sign in</title>
+	<!-- tui.css defines the palette login.css draws from; it must come first. -->
+	<link rel="stylesheet" href="./tui.css" />
+	<link rel="stylesheet" href="./login.css" />
+</head>
+<body>
+	<main class="login-panel">
+		<header class="login-panel__header">
+			<span class="login-panel__title">novel reader</span>
+			<span class="login-panel__subtitle" id="mode-caption">sign in</span>
+		</header>
+
+		<div class="login-tabs" role="tablist" aria-label="Sign in or sign up">
+			<button type="button" class="login-tab" id="tab-signin" role="tab" aria-selected="true">sign in</button>
+			<button type="button" class="login-tab" id="tab-signup" role="tab" aria-selected="false">sign up</button>
+		</div>
+
+		<form class="login-panel__body" id="login-form" novalidate>
+			<div class="login-field">
+				<label class="login-field__label" for="username">username</label>
+				<span class="login-field__frame">
+					<input class="login-field__input" id="username" name="username" type="text"
+						autocomplete="username" autocapitalize="none" autocorrect="off"
+						spellcheck="false" placeholder="anton" required />
+				</span>
+			</div>
+
+			<div class="login-field">
+				<label class="login-field__label" for="password">password</label>
+				<span class="login-field__frame">
+					<input class="login-field__input" id="password" name="password" type="password"
+						autocomplete="current-password" placeholder="••••••••" required />
+				</span>
+			</div>
+
+			<div class="login-panel__actions">
+				<button class="login-submit" id="submit" type="submit">sign in</button>
+			</div>
+		</form>
+
+		<p class="login-message" id="message" role="status" aria-live="polite"></p>
+
+		<footer class="login-panel__hints">
+			tab next field &middot; &larr;/&rarr; switch mode &middot; enter submit
+		</footer>
+	</main>
+
+	<script src="./login.js" type="module"></script>
+</body>
+</html>

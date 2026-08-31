@@ -1,0 +1,24 @@
+/*
+ * Shared TUI palette.
+ *
+ * The definition box established the look — monospace, sharp corners, a dim rule between
+ * sections, a hint bar along the bottom. These tokens are that look, named once so the
+ * navigation panel and the definition box cannot drift apart.
+ */
+
+:root {
+	--tui-bg: #0e0e0e;
+	--tui-border: #b2b2b2;
+	--tui-text: #d8d8d8;
+	--tui-dim: #8a8a8a;
+	--tui-accent: #c8b98f;
+	--tui-rule: #333;
+	--tui-selection: rgba(200, 185, 143, 0.14);
+	--tui-mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", ui-monospace, monospace;
+
+	/*
+	 * The reading column runs at 1.8em; every TUI panel steps down from it by this much so
+	 * chrome reads as chrome rather than as prose.
+	 */
+	--tui-scale: 0.42em;
+}

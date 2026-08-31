@@ -1,13 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,8 +20,36 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NovelReader.Data.Mongo\NovelReader.Data.Mongo.csproj" />
+    <ProjectReference Include="..\NovelReader.Data.Sqlite\NovelReader.Data.Sqlite.csproj" />
     <ProjectReference Include="..\NovelReader.Domain\NovelReader.Domain.csproj" />
     <ProjectReference Include="..\NovelReader.Retrievers\NovelReader.Retrievers.csproj" />
+    <ProjectReference Include="..\NovelReader.Dictionary\NovelReader.Dictionary.csproj" />
   </ItemGroup>
+
+  <!--
+    Compiles the TypeScript in src/ into wwwroot before the .NET build.
+    Requires Node. Build with -p:SkipClientBuild=true to reuse the JS already on disk.
+  -->
+  <ItemGroup>
+    <ClientSource Include="src\**\*.ts" />
+    <ClientSource Include="tsconfig.json" />
+    <ClientSource Include="package.json" />
+    <ClientSource Include="package-lock.json" />
+  </ItemGroup>
+
+  <Target Name="EnsureNodeAvailable" Condition="'$(SkipClientBuild)' != 'true'">
+    <Exec Command="node --version" WorkingDirectory="$(MSBuildProjectDirectory)" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_NodeExitCode" />
+    </Exec>
+    <Error Condition="'$(_NodeExitCode)' != '0'" Text="Node.js is required to compile the TypeScript client. Install it (sudo pacman -S nodejs npm), or build with -p:SkipClientBuild=true to reuse the JavaScript already in wwwroot." />
+  </Target>
+
+  <Target Name="NpmInstall" DependsOnTargets="EnsureNodeAvailable" Condition="'$(SkipClientBuild)' != 'true'" Inputs="package.json;package-lock.json" Outputs="node_modules\.package-lock.json">
+    <Exec Command="npm ci" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="CompileClientTypeScript" DependsOnTargets="NpmInstall" Condition="'$(SkipClientBuild)' != 'true'" BeforeTargets="BeforeBuild;ResolveStaticWebAssetsInputs" Inputs="@(ClientSource)" Outputs="wwwroot\realTimeReader.js">
+    <Exec Command="npx tsc --project tsconfig.json" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
 
 </Project>

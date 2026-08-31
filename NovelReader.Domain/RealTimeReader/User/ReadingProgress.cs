@@ -1,17 +1,15 @@
-﻿namespace NovelReader.Domain.RealTimeReader.User
+namespace NovelReader.Domain.RealTimeReader.User
 {
-	public class ReadingProgress
+	/// <summary>
+	/// Where a reader had got to in one novel. <see cref="ParagraphNumber"/> is the last
+	/// paragraph they actually had on screen, not the next one to fetch — resuming puts that
+	/// paragraph back at the bottom of the viewport, where they left it.
+	/// </summary>
+	public sealed class ReadingProgress
 	{
-		public required string NovelName { get; set; }
-		public required int ChapterNumber { get; set; }
-		public required int ParagraphNumber { get; set; }
-
-		public Dictionary<string, string> GetReadingProgressForNovel()
-		{
-			return new Dictionary<string, string> {
-				{ "chapterNumber", ChapterNumber.ToString() },
-				{ "paragraphNumber", ParagraphNumber.ToString() },
-			};
-		}
+		public required string NovelName { get; init; }
+		public required int ChapterNumber { get; init; }
+		public required int ParagraphNumber { get; init; }
+		public required DateTime UpdatedAtUtc { get; init; }
 	}
 }

@@ -1,0 +1,192 @@
+/*
+ * The login screen, drawn as the same TUI panel as the definition box and the navigation
+ * menu. Palette comes from tui.css.
+ *
+ * This page sets its own type scale: the reading column's 1.8em body size exists to make
+ * prose comfortable, and there is no prose here.
+ */
+
+body {
+	min-height: 100vh;
+	margin: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	box-sizing: border-box;
+	background-color: #1b1b1b;
+	color: var(--tui-text);
+	font-family: var(--tui-mono);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.login-panel {
+	width: min(52ch, 100%);
+	background-color: var(--tui-bg);
+	border: 2px solid var(--tui-border);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.login-panel__header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 1em;
+	padding: 0.5em 0.75em;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.login-panel__title {
+	font-weight: 700;
+	color: var(--tui-accent);
+}
+
+.login-panel__subtitle {
+	color: var(--tui-dim);
+}
+
+/* Mode switch. Real buttons, so they are in the tab order and clickable. */
+.login-tabs {
+	display: flex;
+	gap: 0;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.login-tab {
+	flex: 1;
+	appearance: none;
+	background: transparent;
+	border: none;
+	border-right: 1px solid var(--tui-rule);
+	padding: 0.5em 0.75em;
+	color: var(--tui-dim);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.login-tab:last-child {
+	border-right: none;
+}
+
+.login-tab::before {
+	content: "  ";
+	white-space: pre;
+	color: var(--tui-accent);
+}
+
+.login-tab[aria-selected="true"] {
+	background-color: var(--tui-selection);
+	color: var(--tui-accent);
+}
+
+.login-tab[aria-selected="true"]::before {
+	content: "> ";
+}
+
+.login-tab:focus-visible {
+	outline: 1px solid var(--tui-accent);
+	outline-offset: -1px;
+}
+
+.login-panel__body {
+	padding: 0.75em;
+}
+
+.login-field {
+	display: flex;
+	align-items: baseline;
+	gap: 0.75em;
+	padding: 0.35em 0;
+}
+
+.login-field__label {
+	width: 9ch;
+	flex: none;
+	color: var(--tui-dim);
+}
+
+/* The bracket gutter reads as a terminal field rather than a web input. */
+.login-field__frame {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: baseline;
+	border: 1px solid var(--tui-rule);
+	padding: 0.15em 0.5em;
+}
+
+.login-field__frame:focus-within {
+	border-color: var(--tui-accent);
+}
+
+.login-field__input {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: none;
+	outline: none;
+	padding: 0;
+	color: var(--tui-text);
+	font: inherit;
+}
+
+.login-field__input::placeholder {
+	color: #555;
+}
+
+.login-panel__actions {
+	display: flex;
+	justify-content: flex-end;
+	padding: 0.35em 0 0 0;
+}
+
+.login-submit {
+	appearance: none;
+	background: transparent;
+	border: 1px solid var(--tui-border);
+	padding: 0.3em 1.2em;
+	color: var(--tui-text);
+	font: inherit;
+	cursor: pointer;
+}
+
+.login-submit:hover,
+.login-submit:focus-visible {
+	border-color: var(--tui-accent);
+	color: var(--tui-accent);
+	outline: none;
+}
+
+.login-submit[disabled] {
+	color: var(--tui-dim);
+	border-color: var(--tui-rule);
+	cursor: default;
+}
+
+/*
+ * Reserves its line whether or not there is a message, so the panel does not jump when one
+ * appears.
+ */
+.login-message {
+	min-height: 1.5em;
+	padding: 0.35em 0.75em;
+	border-top: 1px solid var(--tui-rule);
+	color: var(--tui-dim);
+}
+
+.login-message--error {
+	color: #d98a8a;
+}
+
+.login-message--working {
+	font-style: italic;
+}
+
+.login-panel__hints {
+	padding: 0.45em 0.75em;
+	border-top: 1px solid var(--tui-rule);
+	color: var(--tui-dim);
+	font-size: 0.9em;
+}
