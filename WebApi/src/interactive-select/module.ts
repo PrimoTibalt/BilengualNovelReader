@@ -210,6 +210,22 @@ export class NavigationMenu {
     matched.item.run();
   }
 
+  /** Moves the cursor to the tapped row, then activates it — the pointer's Enter. */
+  #activateClickedRow(event: MouseEvent): void {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const option = target.closest(".navigation-list__option");
+    const index = option?.parentElement
+      ? Array.from(option.parentElement.children).indexOf(option)
+      : -1;
+    if (index < 0) return;
+
+    this.#index = index;
+    this.#renderSelection();
+    this.activate();
+  }
+
   focusFilter(): void {
     this.#filter?.focus();
   }
@@ -229,9 +245,26 @@ export class NavigationMenu {
     title.className = "navigation-panel__title";
     header.appendChild(title);
 
+    // The counter and the touch-only back button share the right end of the header, so a
+    // wide breadcrumb still pushes the group as a whole rather than splitting the two apart.
+    const headerRight = document.createElement("span");
+    headerRight.className = "navigation-panel__header-right";
+
     const counter = document.createElement("span");
     counter.className = "navigation-panel__counter";
-    header.appendChild(counter);
+    headerRight.appendChild(counter);
+
+    // On touch there is no Escape: this does what Escape does — clears a filter, else pops a
+    // screen, else closes. Hidden on a keyboard (CSS), where the hint bar names the key.
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "navigation-panel__close";
+    close.textContent = "✕";
+    close.setAttribute("aria-label", "Back");
+    close.addEventListener("click", () => this.back());
+    headerRight.appendChild(close);
+
+    header.appendChild(headerRight);
 
     panel.appendChild(header);
 
@@ -255,6 +288,9 @@ export class NavigationMenu {
 
     const body = document.createElement("div");
     body.className = "navigation-panel__body";
+    // A tapped (or clicked) row is a select-then-activate, so touch has no need of the
+    // arrow keys and Enter. Harmless on a keyboard, where a mouse gains the same shortcut.
+    body.addEventListener("click", (event) => this.#activateClickedRow(event));
     panel.appendChild(body);
 
     const hints = document.createElement("footer");

@@ -13,15 +13,22 @@ namespace NovelReader.Controllers
     public class ReadingPageController : ControllerBase
     {
         private ISearchNovelsRetriever _searchNovelsRetriever;
+        private readonly IWebHostEnvironment _environment;
+        private readonly AssetVersion _assetVersion;
 
-        public ReadingPageController(ISearchNovelsRetriever searchNovelRetriever)
+        public ReadingPageController(
+            ISearchNovelsRetriever searchNovelRetriever,
+            IWebHostEnvironment environment,
+            AssetVersion assetVersion)
         {
             _searchNovelsRetriever = searchNovelRetriever;
+            _environment = environment;
+            _assetVersion = assetVersion;
         }
 
         public IActionResult Index()
         {
-            return File("index.html", "text/html");
+            return VersionedPage.Serve(this, _environment, _assetVersion, "index.html");
         }
 
         [HttpGet("/search/{searchInput}")]

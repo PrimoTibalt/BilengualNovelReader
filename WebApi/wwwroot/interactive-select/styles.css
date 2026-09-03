@@ -47,10 +47,37 @@
 	font-weight: 400;
 }
 
+.navigation-panel__header-right {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+}
+
 .navigation-panel__counter {
 	color: var(--tui-dim);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
+}
+
+/*
+ * The tap equivalent of Escape. Hidden on a keyboard, where the hint bar names the key;
+ * shown on touch, where it is the only way back out of a screen.
+ */
+.navigation-panel__close {
+	display: none;
+	appearance: none;
+	background: none;
+	border: none;
+	color: var(--tui-text);
+	font-family: inherit;
+	font-size: 1.3em;
+	line-height: 1;
+	padding: 0 0.2em;
+	cursor: pointer;
+}
+
+html.touch-input .navigation-panel__close {
+	display: inline-block;
 }
 
 .navigation-panel__filter-row {
@@ -187,6 +214,17 @@
 	font-size: 0.9em;
 }
 
+/* The hint bar names keys that a touch device does not have; the ✕ and the taps replace it. */
+html.touch-input .navigation-panel__hints {
+	display: none;
+}
+
+/* Roomier rows so a fingertip lands on one row, not the seam between two. */
+html.touch-input .navigation-list__option {
+	padding-top: 0.5em;
+	padding-bottom: 0.5em;
+}
+
 /*
  * Closed-state affordance. The menu used to sit open on the page; now that it is a mode,
  * this is what tells the reader the key exists.
@@ -199,8 +237,19 @@
 	font-family: var(--tui-mono);
 	font-size: var(--tui-scale);
 	color: var(--tui-dim);
+	/* On a keyboard this is a hint, not a control: the `n` key opens the menu. */
 	pointer-events: none;
 	user-select: none;
+	/* It is a <button> now (tappable on touch); strip the native chrome on a keyboard. */
+	appearance: none;
+	background: none;
+	border: none;
+	margin: 0;
+	padding: 0;
+	cursor: default;
+	display: inline-flex;
+	align-items: center;
+	line-height: 1.5;
 }
 
 .navigation-affordance__key {
@@ -208,4 +257,32 @@
 	padding: 0 0.4em;
 	margin-right: 0.4em;
 	color: var(--tui-text);
+}
+
+/* The hamburger stands in for the key badge on touch, where there is no `n` to press. */
+.navigation-affordance__icon {
+	display: none;
+	margin-right: 0.4em;
+}
+
+/*
+ * On touch the hint becomes the control: a real, tappable button with panel chrome, the
+ * hamburger in place of the key badge.
+ */
+html.touch-input .navigation-affordance {
+	pointer-events: auto;
+	cursor: pointer;
+	color: var(--tui-text);
+	background-color: var(--tui-bg);
+	border: 2px solid var(--tui-border);
+	padding: 0.4em 0.7em;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+html.touch-input .navigation-affordance__icon {
+	display: inline;
+}
+
+html.touch-input .navigation-affordance__key {
+	display: none;
 }

@@ -8,9 +8,18 @@ namespace NovelReader.Controllers
 	[AllowAnonymous]
 	public class LoginController : ControllerBase
 	{
+		private readonly IWebHostEnvironment _environment;
+		private readonly AssetVersion _assetVersion;
+
+		public LoginController(IWebHostEnvironment environment, AssetVersion assetVersion)
+		{
+			_environment = environment;
+			_assetVersion = assetVersion;
+		}
+
 		public IActionResult Index()
 		{
-			return File("login.html", "text/html");
+			return VersionedPage.Serve(this, _environment, _assetVersion, "login.html");
 		}
 	}
 }

@@ -588,3 +588,119 @@ too, with the earlier chapter's text above it to scroll back into.
 *arithmetic* of "put this paragraph at the bottom" perfectly well. What they could not see was
 that the arithmetic ran against a layout that was about to change, in a tab that was never
 going to paint.
+
+---
+
+## D24 — Touch readers get tapped equivalents of the keyboard, gated on "no keyboard"
+
+**Status:** Adopted · 2026-09-04
+
+**Context.** Every reader action is a keypress: `n` opens the menu, `d` defines a selection,
+`s` saves it, `j`/`k` scroll, `t`/`Esc` and the rest live inside the panels (D6). On a phone
+or tablet there is no keyboard, so the page was not merely awkward — it was inert. The three
+things a touch reader needs: a way to open the menu, a way to reach a definition, and buttons
+in the panels the keys drive.
+
+**Detection is "no keyboard", not "small screen".** The trigger is
+`(hover: none) and (pointer: coarse)`, not a width breakpoint. A narrow window on a laptop
+still has a keyboard and must stay untouched; a large tablet has none and needs the controls.
+The real axis is the input, so that is what is measured. `src/input/pointer.ts` reads it once
+as `isTouchPrimary` and stamps a `touch-input` class on `<html>`.
+
+**The switch lives in CSS wherever it can.** Most of the change is which chrome shows, so the
+class does the work and the stylesheets carry both looks: the hint becomes a bordered button,
+the menu grows a `✕` and hides the key-hint bar, the definition box shows a tap toolbar and
+hides its hint bar, and the panels step up a size (the terminal-small chrome is a strain to
+read and to tap). Only two things must be JavaScript, because they cannot be expressed as a
+style: removing the affordance's `aria-hidden`/`tabindex` so it is a real focusable control
+rather than a decorative hint, and the selection listener below.
+
+**Selecting text is the `d` key.** With no `d` to press, a settled text selection inside the
+reading column opens its own definition — the same `defineSelection` path the key takes.
+`selectionchange` fires throughout a drag, so the lookup waits 450 ms for it to stop, fires
+only for a selection whose anchor is inside the reading column (never one in the menu filter
+or with a box already open), and is wired only when `isTouchPrimary`.
+
+**Decision.** A `touch-input` class drives the chrome from CSS; the tap handlers are added
+unconditionally (a mouse gains the same row-click and buttons, which is harmless and a small
+win), and only the media-gated behaviour — the auto-define listener and the affordance's ARIA
+— is guarded by `isTouchPrimary`. No library and no framework: the buttons are hand-written
+DOM and the detection is one media query (D5). The menu still handles no keys itself and the
+identity still comes from the cookie (D6, D20) — this adds a pointer, not a new authority.
+
+**Consequences.**
+- Desktop is pixel-identical: the affordance keeps `pointer-events: none` and its key badge,
+  the menu keeps its hint bar and no `✕`, the definition box keeps its hint bar and no
+  toolbar. Verified that `n` still opens the menu with the class absent.
+- The `✕` and the reading-mode selection both mean exactly what Escape and `d` mean, so touch
+  and keyboard never drift into two behaviours — the button calls `back()`, the listener calls
+  `defineSelection`.
+- Saving from a selection needs no touch button of its own: the selection opens the box, and
+  the box's own Save button covers it. Scrolling needs none either — the native gesture
+  already does what `j`/`k` do, and reaching the bottom still loads the next chapter.
+
+**A note on verifying it.** The harness cannot toggle Chrome's pointer-media emulation, so the
+touch state cannot be made real from outside the page. The chrome and every tap handler were
+checked live by forcing the `touch-input` class and clicking; the media-gated auto-define was
+checked with a faithful mirror of the listener — same debounce, same guards — reaching the
+same proven define path. The one thing not exercised end to end on a real device is the
+`isTouchPrimary` media match itself, which is a single query read once.
+
+---
+
+## D25 — Cache-busting is a versioned path prefix, because the client is an ES-module graph
+
+**Status:** Adopted · 2026-09-04
+
+**Context.** A touch-support change (D24) did not reach a phone that had already loaded the
+site: the browser was still running a cached `realTimeReader.js` from before the change, so it
+ran the old keyboard-only page. The client is served with no cache-busting, and because it is
+an **ES-module graph** — the entry imports `./input/pointer.js`, which imports others — a
+*single* stale file silently breaks the whole page, not just one feature.
+
+**Why not a query string.** The obvious fix, `realTimeReader.js?v=hash`, does not work here.
+A query on the entry script is not carried into the relative imports *inside* it: the browser
+resolves `./input/pointer.js` against the module's own URL, without the query, so a changed
+`pointer.js` stays stale. Rewriting every import to add a query would need a bundler or a
+build step the project deliberately does not have (D5).
+
+**Decision.** Version by **path prefix**, not query. Assets are named
+`/_v/{token}/realTimeReader.js`, and the shells carry `<base href="/_v/{token}/">`, so every
+relative URL — the `<link>`s, the entry `<script>`, the font `url()` inside the CSS, and every
+`./…` import the modules make — resolves under the versioned path *on its own*, because a
+relative specifier resolves against the versioned URL of the module that names it. Change the
+token and the entire graph moves to fresh URLs at once.
+
+- `AssetVersion` computes the token at start-up from every `wwwroot` file's path, size and
+  last-write time — no file is read. `tsc` rewrites the emitted `.js` on every build, moving
+  their timestamps, so the token tracks the build with nothing to bump by hand.
+- Two static mounts: the versioned one (`RequestPath = /_v/{token}`) answers
+  `Cache-Control: public, max-age=31536000, immutable`; the unversioned one is downgraded to
+  `no-cache` so a direct hit or the favicon must revalidate rather than be trusted stale.
+- The HTML shells are no longer static files. `ReadingPageController` and `LoginController`
+  serve them through `VersionedPage`, which injects the `<base>` over an `<!--ASSET-BASE-->`
+  placeholder and marks the shell `no-cache`. The shell is the one thing refetched each load —
+  tiny — and it is what carries the reader onto the current token.
+
+**Consequences.**
+- A returning reader can cache every asset forever and still never run a stale one: the shell
+  revalidates, hands them the current token, and the versioned URLs under it are new whenever
+  anything changed.
+- The token is per-process, computed once at start-up. A deploy is a restart, which is exactly
+  when it must change; editing a `wwwroot` file *without* restarting will not move it, which is
+  a non-issue since local iteration reloads anyway.
+- All dynamic URLs are absolute (`/signalr`, `/auth/…`, `/ReadingPage`), so `<base>` — which
+  only rewrites *relative* URLs — leaves the hub negotiate, the auth posts and the navigations
+  untouched, and reshapes only the asset graph.
+- Absolute-versioned URLs mean a client holding an old shell would ask for an old token and get
+  a 404 rather than a wrong file; the shell's `no-cache` keeps that window to a single request.
+
+**Verified.** The WebApi build is clean (0 warnings, 0 errors), and the running instance was
+checked in a browser: the served `/Login` and `/ReadingPage` shells carry
+`<base href="/_v/{token}/">`; the reading page rendered its 87 paragraphs — which only happens
+if the whole module graph resolved, so the entry **and** its `./input/pointer.js` import both
+loaded from `/_v/{token}/…`, with no app asset leaking to the unversioned root; the versioned
+assets answered `immutable`, an unversioned direct hit answered `no-cache`, and a stale token
+(`/_v/deadbeef/…`) 404'd. (The check ran against the developer's own instance because this
+session's sandbox kills any process that binds a port — a build, which binds nothing, runs
+fine.)

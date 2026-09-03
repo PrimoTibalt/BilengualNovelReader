@@ -146,6 +146,50 @@ html.scroll-locked {
 }
 
 /*
+ * Tap toolbar: the same actions as the hint bar, as buttons. On a keyboard the hints do the
+ * job and this stays hidden; on touch it is shown and the hints are not.
+ */
+.definition-box__buttons {
+	display: none;
+	flex-wrap: wrap;
+	gap: 0.4em;
+	padding: 0.5em 0.75em;
+	border-top: 1px solid var(--tui-rule);
+}
+
+html.touch-input .definition-box__buttons {
+	display: flex;
+}
+
+html.touch-input .definition-box__hints {
+	display: none;
+}
+
+.definition-box__button {
+	flex: 1 1 auto;
+	appearance: none;
+	background-color: var(--definition-bg);
+	border: 1px solid var(--definition-border);
+	color: var(--definition-text);
+	font-family: var(--definition-mono);
+	font-size: inherit;
+	line-height: 1.2;
+	padding: 0.5em 0.7em;
+	min-height: 2.4em;
+	text-align: center;
+	cursor: pointer;
+}
+
+.definition-box__button:active {
+	background-color: var(--tui-selection);
+}
+
+.definition-box__button:disabled {
+	color: var(--definition-dim);
+	cursor: default;
+}
+
+/*
  * The tail is a rotated square carrying two of the panel's borders, so its edges line up
  * with the panel outline and its face matches the panel fill.
  */

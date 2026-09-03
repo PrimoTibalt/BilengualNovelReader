@@ -22,3 +22,12 @@
 	 */
 	--tui-scale: 0.42em;
 }
+
+/*
+ * Touch devices have no keyboard, so the panels step up a size — the terminal-small chrome
+ * is a strain to read and to tap on a phone — and expose the buttons the keyboard hides.
+ * The class is stamped on <html> by src/input/pointer.ts.
+ */
+html.touch-input {
+	--tui-scale: 0.58em;
+}

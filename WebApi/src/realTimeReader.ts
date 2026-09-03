@@ -4,6 +4,7 @@ import {
   type MenuScreen,
 } from "./interactive-select/module.js";
 import { KeyboardRouter, bindings, type KeyMode } from "./input/keyboardRouter.js";
+import { isTouchPrimary, markPointerMode } from "./input/pointer.js";
 import {
   ReaderConnection,
   type ChapterView,
@@ -42,8 +43,9 @@ const scroller = new SmoothScroller();
 const definitionBox = new DefinitionBox();
 
 const navigationHost = document.getElementById("navigation-container");
+const navigationAffordance = document.getElementById("navigation-affordance") ?? undefined;
 const navigationMenu = navigationHost
-  ? new NavigationMenu(navigationHost, document.getElementById("navigation-affordance") ?? undefined)
+  ? new NavigationMenu(navigationHost, navigationAffordance)
   : undefined;
 
 const progressReporter = paragraphsContainer
@@ -329,6 +331,53 @@ paragraphsContainer?.addEventListener("click", (event) => {
   connection.requestDefinition(term);
 });
 
+// ---- Touch input ----
+
+/**
+ * How long a text selection must hold still before it is looked up on touch. Long enough
+ * that dragging the selection handles across a phrase is one lookup, not one per nudge.
+ */
+const touchSelectionSettleMs = 450;
+
+/**
+ * On a touch device there is no `d` key, so a settled selection opens its own definition —
+ * the same path `d` takes on a keyboard. `selectionchange` fires throughout a drag, so the
+ * lookup waits for it to stop, and only fires for a selection inside the reading column
+ * (never one in the menu filter or the definition box) with nothing already open.
+ */
+function wireTouchSelectionDefine(container: HTMLElement): void {
+  let settleTimer: number | undefined;
+
+  document.addEventListener("selectionchange", () => {
+    if (settleTimer !== undefined) clearTimeout(settleTimer);
+
+    settleTimer = window.setTimeout(() => {
+      settleTimer = undefined;
+      if (definitionBox.isOpen) return;
+
+      const anchor = window.getSelection()?.anchorNode;
+      if (!anchor || !container.contains(anchor)) return;
+
+      defineSelection();
+    }, touchSelectionSettleMs);
+  });
+}
+
+if (navigationAffordance) {
+  // The hint is also the control: tapping it opens the menu that `n` opens. On a keyboard
+  // it stays a decorative hint (pointer-events are off in CSS, so this never fires); on
+  // touch it becomes a real, focusable button.
+  navigationAffordance.addEventListener("click", () => openNavigation());
+  if (isTouchPrimary) {
+    navigationAffordance.removeAttribute("aria-hidden");
+    navigationAffordance.removeAttribute("tabindex");
+  }
+}
+
+if (isTouchPrimary && paragraphsContainer) {
+  wireTouchSelectionDefine(paragraphsContainer);
+}
+
 // ---- Navigation menu ----
 
 /**
@@ -531,6 +580,8 @@ function openNavigation(): void {
 }
 
 // ---- Start ----
+
+markPointerMode();
 
 router.push(readingMode);
 router.start();

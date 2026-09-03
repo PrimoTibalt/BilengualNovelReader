@@ -24,6 +24,7 @@ namespace NovelReader
 			builder.Services.AddSingleton<ChapterPreparationService>();
 			builder.Services.AddSingleton<ChapterReader>();
 			builder.Services.AddSingleton<NovelLibraryService>();
+			builder.Services.AddSingleton<AssetVersion>();
 
 			builder.Services
 				.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -60,7 +61,27 @@ namespace NovelReader
 
 			var app = builder.Build();
 
-			app.UseStaticFiles();
+			var assetVersion = app.Services.GetRequiredService<AssetVersion>();
+
+			// Versioned assets: /_v/{token}/… serves the same wwwroot files, but the token
+			// changes with every build (D25), so a returning reader fetches fresh URLs while the
+			// old ones stay cacheable forever. This mount comes first so its prefix wins.
+			app.UseStaticFiles(new StaticFileOptions
+			{
+				RequestPath = assetVersion.PathPrefix,
+				OnPrepareResponse = context =>
+					context.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable",
+			});
+
+			// Unversioned static files (a direct hit, the favicon) still work, but must
+			// revalidate so a stale copy is never used — the versioned URLs above are the path
+			// the pages actually reference.
+			app.UseStaticFiles(new StaticFileOptions
+			{
+				OnPrepareResponse = context =>
+					context.Context.Response.Headers.CacheControl = "no-cache",
+			});
+
 			app.UseHttpsRedirection();
 
 			app.UseAuthentication();

@@ -43,6 +43,8 @@ export class DefinitionBox {
   #body: HTMLElement | undefined;
   #counter: HTMLElement | undefined;
   #hints: HTMLElement | undefined;
+  /** Tap equivalents of the key hints, shown on touch (CSS). Mirror `#renderHints`. */
+  #buttons: HTMLElement | undefined;
   #view: DefinitionView | undefined;
   #callbacks: DefinitionBoxCallbacks | undefined;
   #senseIndex = 0;
@@ -85,6 +87,12 @@ export class DefinitionBox {
     body.className = "definition-box__body";
     panel.appendChild(body);
 
+    // The tap toolbar sits above the key-hint bar; CSS shows exactly one of the two,
+    // buttons on touch and the hint text on a keyboard.
+    const buttons = document.createElement("div");
+    buttons.className = "definition-box__buttons";
+    panel.appendChild(buttons);
+
     const hints = document.createElement("footer");
     hints.className = "definition-box__hints";
     panel.appendChild(hints);
@@ -99,9 +107,11 @@ export class DefinitionBox {
     this.#root = root;
     this.#body = body;
     this.#hints = hints;
+    this.#buttons = buttons;
 
     this.#renderSense();
     this.#renderHints();
+    this.#renderButtons();
 
     // Height is measured from the first sense and then held, so paging through senses
     // never resizes the panel under the reader (D7).
@@ -115,6 +125,7 @@ export class DefinitionBox {
     this.#body = undefined;
     this.#counter = undefined;
     this.#hints = undefined;
+    this.#buttons = undefined;
     this.#view = undefined;
     this.#callbacks = undefined;
     this.#senseIndex = 0;
@@ -140,6 +151,7 @@ export class DefinitionBox {
   setSaved(isSaved: boolean): void {
     this.#isSaved = isSaved;
     this.#renderHints();
+    this.#renderButtons();
   }
 
   save(): void {
@@ -284,6 +296,7 @@ export class DefinitionBox {
     body.style.height = "";
     this.#renderSense();
     this.#renderHints();
+    this.#renderButtons();
     this.#lockHeightToCurrentSense();
     if (this.#anchor) this.#position(this.#anchor);
   }
@@ -301,6 +314,50 @@ export class DefinitionBox {
     if (view.sourceName) parts.push(`— ${view.sourceName}`);
 
     hints.textContent = parts.join("  ·  ");
+  }
+
+  /**
+   * The tap toolbar: the same actions as the key hints, one button each. Rebuilt whenever
+   * the state behind a hint changes — the sense count, the saved flag, a translation in
+   * flight — so it never falls out of step with `#renderHints`.
+   */
+  #renderButtons(): void {
+    const container = this.#buttons;
+    const view = this.#view;
+    if (!container || !view) return;
+
+    container.replaceChildren();
+
+    const add = (label: string, ariaLabel: string, run: () => void, disabled = false): void => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "definition-box__button";
+      button.textContent = label;
+      button.setAttribute("aria-label", ariaLabel);
+      button.disabled = disabled;
+      button.addEventListener("click", run);
+      container.appendChild(button);
+    };
+
+    if (view.senses.length > 1) {
+      add("‹", "Previous sense", () => this.previousSense());
+      add("›", "Next sense", () => this.nextSense());
+    }
+
+    if (this.#isSaved) {
+      add("delete", "Delete word", () => this.deleteTerm());
+    } else {
+      add("save", "Save word", () => this.save());
+    }
+
+    add(
+      this.#translationPending ? "translating…" : "translate",
+      "Translate",
+      () => this.translate(),
+      this.#translationPending,
+    );
+
+    add("close", "Close", () => this.requestClose());
   }
 
   /**

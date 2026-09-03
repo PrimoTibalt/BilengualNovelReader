@@ -126,8 +126,8 @@ else
 fi
 
 # -------------------------------------------------------------------------- run
-URL_HINT="http://localhost:5261/ReadingPage"
-[ "$LAUNCH_PROFILE" = "https" ] && URL_HINT="https://localhost:7178/ReadingPage"
+URL_HINT="http://0.0.0.0:5261/ReadingPage"
+[ "$LAUNCH_PROFILE" = "https" ] && URL_HINT="https://0.0.0.0:7178/ReadingPage"
 
 log "Starting the app ($LAUNCH_PROFILE profile) -> $URL_HINT"
 log "Mongo keeps running after Ctrl-C; './run.sh --stop' shuts it down."
