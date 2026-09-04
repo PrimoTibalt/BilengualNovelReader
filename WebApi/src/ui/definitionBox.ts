@@ -459,8 +459,14 @@ export class DefinitionBox {
     const root = this.#root;
     if (!root) return;
 
+    // The panel's width is settled in CSS, so this measures what will actually be drawn
+    // wherever the panel ends up — it does not depend on where it currently sits.
     const panelWidth = root.offsetWidth;
     const panelHeight = root.offsetHeight;
+
+    // `clientWidth`, not `innerWidth`: the latter counts the scrollbar's gutter, and a panel
+    // pushed against the right edge would be placed partly underneath it.
+    const viewportWidth = document.documentElement.clientWidth;
 
     const spaceBelow = window.innerHeight - anchor.bottom;
     const placeBelow = spaceBelow >= panelHeight + tailHeight + viewportMargin
@@ -474,7 +480,7 @@ export class DefinitionBox {
       : anchor.top - panelHeight - tailHeight;
 
     const anchorCentre = anchor.left + anchor.width / 2;
-    const maxLeft = window.innerWidth - panelWidth - viewportMargin;
+    const maxLeft = viewportWidth - panelWidth - viewportMargin;
     const left = Math.max(viewportMargin, Math.min(anchorCentre - panelWidth / 2, maxLeft));
 
     root.style.top = `${Math.max(viewportMargin, top)}px`;

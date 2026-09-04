@@ -15,6 +15,17 @@
 	--tui-rule: #333;
 	/* Something is wrong and the reader has to be told: a timed-out lookup, a lost connection. */
 	--tui-error: #c46a6a;
+
+	/*
+	 * Scrollbars inside the panels: a dim block running in a dark trough, the way a TUI draws
+	 * one. Left to themselves the engines disagree loudly — Firefox draws a thin bar, Blink a
+	 * wide one with a rounded thumb — so the panels say what they want rather than taking
+	 * whichever the browser felt like.
+	 */
+	--tui-scroll-thumb: #8a8a8a;
+	--tui-scroll-track: #262626;
+	/* Gecko's "thin"; Blink is told this number outright so the two agree. */
+	--tui-scroll-width: 6px;
 	--tui-selection: rgba(200, 185, 143, 0.14);
 	--tui-mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", ui-monospace, monospace;
 
@@ -32,4 +43,52 @@
  */
 html.touch-input {
 	--tui-scale: 0.58em;
+}
+
+/*
+ * The panels' scrollbars, drawn once here so the definition box and the navigation menu
+ * cannot drift apart — and so the same reader sees the same bar in either browser.
+ *
+ * Left alone the engines disagree loudly: Gecko draws a thin bar, Blink a wide one with a
+ * rounded thumb. Worse, they cannot be told the same thing — Blink ignores the pseudo-elements
+ * below the moment a standard scrollbar property is set, and "thin" is 6px to one engine and
+ * 10px to the other. So each engine is addressed in the only language it takes a *number* in,
+ * and neither block may reach the other.
+ */
+
+/* Blink and WebKit: the legacy pseudo-elements, given the width outright. Gecko does not
+   implement them, so it drops these rules as invalid. */
+.definition-box__body::-webkit-scrollbar,
+.navigation-panel__body::-webkit-scrollbar {
+	width: var(--tui-scroll-width);
+}
+
+.definition-box__body::-webkit-scrollbar-track,
+.navigation-panel__body::-webkit-scrollbar-track {
+	background-color: var(--tui-scroll-track);
+}
+
+.definition-box__body::-webkit-scrollbar-thumb,
+.navigation-panel__body::-webkit-scrollbar-thumb {
+	background-color: var(--tui-scroll-thumb);
+	border-radius: 0;   /* square, like everything else in the panels */
+}
+
+/*
+ * Gecko: the standard properties, whose `thin` is the 6px the block above hands Blink.
+ *
+ * The gate is `-moz-appearance`, which Gecko supports and Blink does not — measured, because
+ * the obvious test is a trap: Firefox answers *true* to
+ * `@supports selector(::-webkit-scrollbar)`, takes the Blink branch, and loses its bar. Both
+ * engines also answer true to `-webkit-appearance`, so that is no good either.
+ *
+ * This block must stay invisible to Blink: setting `scrollbar-width` there would switch the
+ * pseudo-elements above off and hand back the wide default bar.
+ */
+@supports (-moz-appearance: none) {
+	.definition-box__body,
+	.navigation-panel__body {
+		scrollbar-width: thin;
+		scrollbar-color: var(--tui-scroll-thumb) var(--tui-scroll-track);
+	}
 }

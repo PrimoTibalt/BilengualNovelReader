@@ -36,7 +36,20 @@ html.scroll-locked {
 .definition-box {
 	position: fixed;
 	z-index: 100;
-	max-width: min(46ch, calc(100vw - 24px));
+	/*
+	 * A width, not a max-width. With only a maximum the panel shrinks to fit, and a fixed box
+	 * takes its available width from its own `left` to the right edge of the viewport — so a
+	 * word near the right edge squeezed the panel to a few characters, and each re-place
+	 * measured the squeezed width and pushed it further right again. A settled width also
+	 * means the panel cannot change size when the definition replaces `loading…`, which is
+	 * the same promise the fixed height makes (D27).
+	 *
+	 * Both `100%` and `100vw` appear because neither alone is honest in every case: `100%`
+	 * counts a desktop scrollbar out but follows the layout viewport when Firefox's selection
+	 * handles inflate it (see `.reader-affordances`), and `100vw` is the other way round.
+	 * The smaller of the two is right in both.
+	 */
+	width: min(46ch, calc(100vw - 24px), calc(100% - 24px));
 	font-family: var(--definition-mono);
 	font-size: var(--tui-scale);
 	line-height: 1.5;
@@ -83,6 +96,7 @@ html.scroll-locked {
 	padding: 0.75em;
 	overflow-y: auto;
 	overscroll-behavior: contain;
+	/* The bar itself is drawn by the shared rules in tui.css. */
 }
 
 .definition-box__pos {

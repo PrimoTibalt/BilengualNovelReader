@@ -782,6 +782,31 @@ red. Its body is a fixed three lines tall whatever it holds.
   a slow dictionary provider visible for the first time (D1 measured Wiktionary at up to 3.7 s,
   so the threshold sits deliberately above that).
 
+**Amended 2026-09-04: the width is fixed too, and the scrollbar gutter is held open.** Two
+faults found reading on a phone, both when looking up a word at the right-hand edge of the
+column, and both measured before and after the fix.
+
+- **The panel was squeezed to a few characters.** It had a `max-width` but no width, so it
+  shrank to fit — and a `position: fixed` box takes its available width from its own `left`
+  to the right edge of the viewport. A word near that edge therefore left almost no room:
+  measured **109 px** wide. Worse, it ratcheted: `#position` measured the panel *where it
+  currently sat*, so each re-place (and opening on `loading…` guarantees at least one) read
+  the squeezed width and pushed it further right again. The toolbar, whose buttons have a
+  minimum width, then overflowed the panel it was inside. The panel now has a **width**,
+  `min(46ch, calc(100% - 24px))` — the same promise the fixed height makes, extended to the
+  other axis, and it makes `offsetWidth` mean the same thing wherever the panel is. Measured
+  **462 px** at the same word afterwards. `100%` rather than `100vw` because for a fixed box
+  that is the viewport *without* the scrollbar; `#position` reads `clientWidth` for the same
+  reason, since `innerWidth` counts the gutter and would place the panel partly under it.
+- **Both corner buttons jumped right as the panel opened.** Not overflow: opening a panel locks
+  scrolling (`overflow: hidden`), which takes the scrollbar away, widens the viewport by its
+  width, and moves everything anchored to `right: 12px` by exactly that much — measured **15 px**,
+  which is precisely this machine's scrollbar. `html { scrollbar-gutter: stable }` holds the
+  space open whether or not a scrollbar is drawn in it. Measured **0 px** afterwards.
+
+The cost is that a short definition now gets a full-width panel rather than a snug one; a panel
+that changes size is what both of these faults were made of, so a constant one is the trade.
+
 ---
 
 ## D28 — The client reconnects on its own, once a second, and calls wait for it
@@ -829,3 +854,106 @@ client is trying to get back. Between it and the box's `loading…`, "the server
 - **What actually dropped the connection was never identified**, and deliberately so: it was
   reported from a phone, where a WebSocket has a dozen ordinary ways to die. The client now
   recovers from all of them without needing to know which.
+
+---
+
+## D29 — The corner chrome is anchored against `vw`, because Firefox widens the page while you select
+
+**Status:** Adopted · 2026-09-04
+
+**Context.** Reported from a phone: selecting the right-most word on a line slid the `navigate`
+and `d definition` buttons several pixels towards the edge of the screen, under the reader's
+eye. Chrome on the same phone was fine; Firefox was not — and Firefox is what this reader uses.
+The first suspicion was a stale cache (D25), which was wrong: the phone was asked, over USB,
+which rules it had, and it was running the current CSS.
+
+**Cause, measured on the device.** Firefox draws its text-selection handles as content *inside
+the document* — Gecko's AccessibleCaret. A handle on the last word of a line therefore sits
+past the end of the text, the page gains real horizontal overflow, and Gecko grows the layout
+viewport to match. Chrome draws the same handles as native UI outside the document and never
+does this, which is the whole of the difference.
+
+| with the right-most word selected | phone (Firefox) |
+|---|---|
+| `visualViewport.width` | 378 — unchanged, the screen did not move |
+| `innerWidth` | 378 → **401** |
+| `documentElement.clientWidth` | 378 — unchanged |
+| nav button's right edge | 366 → **389** |
+
+**It cannot be clipped away.** The overflow appears on `html` alone: `body`, the article and the
+paragraph each reported `scrollWidth === clientWidth` throughout. `overflow-x: clip` on the root
+was applied live on the device and measured — the viewport still grew to 401. The caret is not
+in any element's overflow to clip.
+
+**Decision.** Stop the chrome trusting the layout viewport. Probing every length on the device
+while a handle was on screen showed `%` following the inflated viewport (400.8) while `vw`
+stayed honest (378) — so their difference *is* the phantom width, and adding it back cancels
+the slide:
+
+```css
+right: max(12px, calc(100% - 100vw + 12px));
+```
+
+`max()` is what keeps a *desktop* scrollbar from pushing the buttons the other way: there `vw`
+is the wider of the two and the calc goes negative, so the floor of 12px wins. The definition
+box takes `min(46ch, calc(100vw - 24px), calc(100% - 24px))` for the same reason — neither
+measure is honest in both situations, and the smaller of the two is right in each.
+
+**Consequences.**
+- The page still gains its phantom 23px; nothing here fights the engine. Only our own anchoring
+  is made immune to it, which is why `right: 12px` must not be "simplified" back in.
+- Measured after the fix, on the device, with a real long-press: nav and definition buttons both
+  hold at 366 while `innerWidth` is still 401, and the box opens 354px wide at left 12.
+- Desktop is unchanged: the stack computes to exactly `12px` there.
+
+**How it was verified, for the next time.** Firefox for Android answers the Remote Debugging
+Protocol over `adb forward tcp:6000 localabstract:org.mozilla.firefox/firefox-debugger-socket`;
+a ~90-line client is enough to list tabs and evaluate JS in the live page. Driving the selection
+with `adb shell input swipe X Y X Y 600` matters — a selection made from script does **not**
+raise the native handles, and with a scripted selection this bug does not reproduce at all.
+
+---
+
+## D30 — Panel scrollbars are addressed to each engine separately, because neither takes the same instruction
+
+**Status:** Adopted · 2026-09-04
+
+**Context.** The scrollbar inside the definition box was thin and TUI-like in Firefox and a fat
+default bar in Chrome — nothing styled it, so each engine drew its own. A reader who moves
+between browsers should not have to notice which one they are in.
+
+**Why one rule will not do it.** Two engine facts, both measured here rather than assumed:
+
+- `scrollbar-width: thin` is **6px in Gecko and 10px in Blink**, and there is no standard way to
+  ask for a number instead of a word.
+- Blink **ignores `::-webkit-scrollbar` entirely while `scrollbar-width` or `scrollbar-color` is
+  set**, so the pseudo-elements — the only way to give it a number — cannot be combined with the
+  standard properties.
+
+So the width can only be settled by giving each engine what it alone understands, and by keeping
+each block away from the other.
+
+**The gate is `-moz-appearance`, and the obvious gate is a trap.** The natural test,
+`@supports selector(::-webkit-scrollbar)`, **answers true in Firefox** — measured: Firefox 154
+took the Blink branch, dropped to `scrollbar-width: auto` and drew a 12px default bar, which is
+worse than doing nothing. `-webkit-appearance` is true in both engines as well. `-moz-appearance`
+is true in Gecko and false in Blink, and is the only one of the four probed that separates them.
+
+**Decision.** In `tui.css`, once, for both panel bodies:
+
+- `::-webkit-scrollbar` rules at the top level give Blink and WebKit the width outright
+  (`--tui-scroll-width`, 6px — Gecko's `thin`, so the two agree on a number).
+- `@supports (-moz-appearance: none)` gives Gecko `scrollbar-width: thin` and `scrollbar-color`.
+- Gecko drops the pseudo-element rules as invalid; Blink never sees the standard properties.
+
+**Verified** by rendering the same harness in both engines headlessly and reading the width each
+reported: **6px in Firefox 154 and 6px in Chromium**, and 6px again in the real windowed Chrome
+against the running app (it had been 10px with `thin`, and the default before that).
+
+**Consequences.**
+- The scrollbar is the one piece of panel chrome `tui.css` draws rather than tokenises, because
+  the split is too easy to get subtly wrong in two places.
+- A future Blink that drops the pseudo-elements would fall back to its default bar. Adding the
+  standard properties outside the `@supports` block to guard against that would break today's
+  Blink immediately, so the trade is deliberate.
+- Both bars are `--tui-scroll-thumb` on `--tui-scroll-track`, square, in both engines.

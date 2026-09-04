@@ -122,6 +122,7 @@ html.touch-input .navigation-panel__close {
 	max-height: min(50vh, 24em);
 	overflow-y: auto;
 	overscroll-behavior: contain;
+	/* The bar itself is drawn by the shared rules in tui.css. */
 }
 
 .navigation-list {
@@ -284,10 +285,6 @@ html.touch-input .navigation-affordance__icon {
 	display: inline;
 }
 
-html.touch-input .navigation-affordance[hidden] {
-	display: none;
-}
-
-.navigation-affordance__key {
+html.touch-input .navigation-affordance__key {
 	display: none;
 }
