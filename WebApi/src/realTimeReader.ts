@@ -8,15 +8,22 @@ import { isTouchPrimary, markPointerMode } from "./input/pointer.js";
 import {
   ReaderConnection,
   type ChapterView,
+  type ConnectionState,
   type NovelSummary,
   type ReadingSessionView,
 } from "./reading/connection.js";
 import { parseChapterNumber } from "./reading/chapterNumber.js";
 import { ProgressReporter } from "./reading/progressReporter.js";
 import { SmoothScroller } from "./reading/scroller.js";
-import { readSelection, clearSelection, rectOf } from "./reading/selection.js";
+import {
+  readSelection,
+  clearSelection,
+  rectOf,
+  rectOfRange,
+  type SelectedTerm,
+} from "./reading/selection.js";
 import { underlineTerm, removeUnderline } from "./reading/underliner.js";
-import { DefinitionBox, type DefinitionView } from "./ui/definitionBox.js";
+import { DefinitionBox } from "./ui/definitionBox.js";
 
 /**
  * The reader is whoever the auth cookie says; the page never names them (D20). Everything
@@ -35,6 +42,8 @@ let loadingChapter = false;
 let reachedEnd = false;
 
 const paragraphsContainer = document.getElementById("novel-paragraphs");
+const connectionStatus = document.getElementById("connection-status");
+const definitionAffordance = document.getElementById("definition-affordance");
 
 // ---- Pieces ----
 
@@ -54,8 +63,15 @@ const progressReporter = paragraphsContainer
   })
   : undefined;
 
-/** Where the box should point once the definition comes back. */
-let pendingAnchor: DOMRect | undefined;
+/**
+ * The settled selection the touch "d definition" button will look up. Captured when the
+ * button appears, so the button can be tapped without the browser's own handling of that tap
+ * having to leave the selection alone (D26).
+ */
+let pendingSelection: SelectedTerm | undefined;
+
+/** Re-run once the connection is back, when a chapter load was cut short by losing it (D28). */
+let retryWhenConnected: (() => void) | undefined;
 
 const definitionMode: KeyMode = {
   name: "definition",
@@ -107,8 +123,31 @@ function defineSelection(): void {
   const selected = readSelection();
   if (!selected) return;
 
-  pendingAnchor = selected.rect;
-  connection.requestDefinition(selected.text);
+  lookUp(selected.text, selected.rect);
+}
+
+/**
+ * Opens the box on the word straight away and asks for its definition. The box shows
+ * `loading…` until the answer lands — and says so if none does — so waiting never looks the
+ * same as nothing happening (D27).
+ */
+function lookUp(term: string, anchor: DOMRect): void {
+  hideDefinitionAffordance();
+
+  definitionBox.open(term, anchor, {
+    onSave: (saved) => connection.saveWord(novelName, saved),
+    onDelete: (saved) => connection.deleteWord(saved),
+    onTranslate: (saved) => {
+      definitionBox.showTranslationPending();
+      connection.requestTranslation(saved);
+    },
+    onClose: () => closeDefinitionBox(),
+  });
+
+  clearSelection();
+  if (!router.has("definition")) router.push(definitionMode);
+
+  connection.requestDefinition(term);
 }
 
 function saveSelection(): void {
@@ -116,24 +155,6 @@ function saveSelection(): void {
   if (!selected) return;
 
   connection.saveWord(novelName, selected.text);
-}
-
-function openDefinitionBox(view: DefinitionView): void {
-  const anchor = pendingAnchor;
-  if (!anchor) return;
-
-  definitionBox.open(view, anchor, {
-    onSave: (term) => connection.saveWord(novelName, term),
-    onDelete: (term) => connection.deleteWord(term),
-    onTranslate: (term) => {
-      definitionBox.showTranslationPending();
-      connection.requestTranslation(term);
-    },
-    onClose: () => closeDefinitionBox(),
-  });
-
-  clearSelection();
-  if (!router.has("definition")) router.push(definitionMode);
 }
 
 function closeDefinitionBox(): void {
@@ -144,7 +165,15 @@ function closeDefinitionBox(): void {
 // ---- Connection ----
 
 const connection = new ReaderConnection({
-  onDefinition: (view) => openDefinitionBox(view),
+  onDefinition: (view) => {
+    // The box is already open on the word that was asked for; an answer for anything else is
+    // one the reader has moved on from.
+    if (!definitionBox.isOpen || definitionBox.surfaceForm !== view.surfaceForm) return;
+
+    definitionBox.showDefinition(view);
+  },
+
+  onConnectionStateChanged: (state) => showConnectionState(state),
 
   onTranslation: (term, translation) => {
     // A late answer for a word the reader has already moved on from is dropped.
@@ -200,7 +229,9 @@ async function loadAndAppend(chapterNumber: number): Promise<ChapterView> {
   if (chapter.found) {
     appendChapter(chapter);
     lastLoadedChapter = Math.max(lastLoadedChapter, chapterNumber);
-  } else {
+  } else if (!chapter.failed) {
+    // An empty chapter is the end of the novel. A call that never got through is not: the
+    // page waits for the connection instead of deciding the novel has run out (D28).
     reachedEnd = true;
   }
 
@@ -286,6 +317,11 @@ async function openNovelAt(
 
     const chapter = await loadAndAppend(chapterNumber);
     if (!chapter.found) {
+      if (chapter.failed) {
+        retryWhenConnected = () => void openNovelAt(novel, chapterNumber, paragraphNumber, resuming);
+        return;
+      }
+
       showNotice(`Chapter ${chapterNumber} of “${novel}” could not be loaded.`);
       return;
     }
@@ -327,25 +363,40 @@ paragraphsContainer?.addEventListener("click", (event) => {
   const term = knownWord.dataset["term"];
   if (!term) return;
 
-  pendingAnchor = rectOf(knownWord);
-  connection.requestDefinition(term);
+  lookUp(term, rectOf(knownWord));
 });
 
 // ---- Touch input ----
 
 /**
- * How long a text selection must hold still before it is looked up on touch. Long enough
- * that dragging the selection handles across a phrase is one lookup, not one per nudge.
+ * How long a text selection must hold still before the definition button offers it. Long
+ * enough that dragging the selection handles across a phrase does not flicker the button.
  */
 const touchSelectionSettleMs = 450;
 
+/** The selection, but only while it is inside the reading column. */
+function selectionInsideColumn(container: HTMLElement): SelectedTerm | undefined {
+  const anchor = window.getSelection()?.anchorNode;
+  if (!anchor || !container.contains(anchor)) return undefined;
+
+  return readSelection();
+}
+
+function hideDefinitionAffordance(): void {
+  pendingSelection = undefined;
+  if (definitionAffordance) definitionAffordance.hidden = true;
+}
+
 /**
- * On a touch device there is no `d` key, so a settled selection opens its own definition —
- * the same path `d` takes on a keyboard. `selectionchange` fires throughout a drag, so the
- * lookup waits for it to stop, and only fires for a selection inside the reading column
- * (never one in the menu filter or the definition box) with nothing already open.
+ * On a touch device there is no `d` key, so a settled selection offers the button instead:
+ * `d definition`, under the navigation hint in the top-right corner, tapped when the reader
+ * wants the definition rather than the moment they finish selecting (D26).
+ *
+ * `selectionchange` fires throughout a drag, so the button waits for it to stop, and appears
+ * only for a selection inside the reading column — never one in the menu filter — with no
+ * definition box already open.
  */
-function wireTouchSelectionDefine(container: HTMLElement): void {
+function wireTouchDefinitionAffordance(container: HTMLElement, button: HTMLElement): void {
   let settleTimer: number | undefined;
 
   document.addEventListener("selectionchange", () => {
@@ -353,13 +404,20 @@ function wireTouchSelectionDefine(container: HTMLElement): void {
 
     settleTimer = window.setTimeout(() => {
       settleTimer = undefined;
-      if (definitionBox.isOpen) return;
 
-      const anchor = window.getSelection()?.anchorNode;
-      if (!anchor || !container.contains(anchor)) return;
-
-      defineSelection();
+      const selected = definitionBox.isOpen ? undefined : selectionInsideColumn(container);
+      pendingSelection = selected;
+      button.hidden = selected === undefined;
     }, touchSelectionSettleMs);
+  });
+
+  button.addEventListener("click", () => {
+    const selected = pendingSelection;
+    if (!selected) return;
+
+    // Measured now rather than when the button appeared: the page may have been scrolled in
+    // between, and the box has to point at where the words are.
+    lookUp(selected.text, rectOfRange(selected.range) ?? selected.rect);
   });
 }
 
@@ -374,8 +432,8 @@ if (navigationAffordance) {
   }
 }
 
-if (isTouchPrimary && paragraphsContainer) {
-  wireTouchSelectionDefine(paragraphsContainer);
+if (isTouchPrimary && paragraphsContainer && definitionAffordance) {
+  wireTouchDefinitionAffordance(paragraphsContainer, definitionAffordance);
 }
 
 // ---- Navigation menu ----
@@ -574,9 +632,32 @@ async function resumeNovel(novel: string): Promise<void> {
 function openNavigation(): void {
   if (!navigationMenu || navigationMenu.isOpen) return;
 
+  // The menu covers the corner both affordances sit in.
+  hideDefinitionAffordance();
+
   // The mode goes on first so that a menu closed during `open` still pops cleanly.
   if (!router.has("navigation")) router.push(navigationMode);
   navigationMenu.open(rootScreen(), () => router.pop("navigation"));
+}
+
+// ---- Connection state ----
+
+/**
+ * The one visible sign that the link to the server is down. It appears while the client is
+ * reconnecting — which it does once a second, for as long as it takes — and takes anything
+ * that was cut short with it when the connection returns (D28).
+ */
+function showConnectionState(state: ConnectionState): void {
+  if (connectionStatus) {
+    connectionStatus.textContent = state === "connected" ? "" : "reconnecting…";
+    connectionStatus.hidden = state === "connected";
+  }
+
+  if (state !== "connected") return;
+
+  const retry = retryWhenConnected;
+  retryWhenConnected = undefined;
+  retry?.();
 }
 
 // ---- Start ----
@@ -595,6 +676,8 @@ connection
     await openNovelAt(session.novelName, session.chapterNumber, session.paragraphNumber, session.resuming);
   })
   .catch((error: unknown) => {
+    // `start` waits out an unreachable server rather than failing, so reaching here means the
+    // first calls after it did not go through. The connection keeps trying underneath.
     console.error(error instanceof Error ? error.toString() : String(error));
     showNotice("Could not reach the server.");
   });
@@ -608,8 +691,23 @@ window.addEventListener("scroll", () => {
   const reachedBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 100;
   if (!reachedBottom) return;
 
-  loadingChapter = true;
-  void loadAndAppend(lastLoadedChapter + 1).finally(() => {
-    loadingChapter = false;
-  });
+  loadNextChapter(lastLoadedChapter + 1);
 });
+
+/**
+ * Rolls the novel forward by one chapter. A load the connection cut short is asked for again
+ * as soon as the connection is back — the reader is at the bottom of the page, so there is no
+ * further scroll event coming to try again with (D28).
+ */
+function loadNextChapter(chapterNumber: number): void {
+  if (loadingChapter || reachedEnd) return;
+
+  loadingChapter = true;
+  void loadAndAppend(chapterNumber)
+    .then((chapter) => {
+      if (chapter.failed) retryWhenConnected = () => loadNextChapter(chapterNumber);
+    })
+    .finally(() => {
+      loadingChapter = false;
+    });
+}

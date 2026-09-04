@@ -44,11 +44,21 @@ export interface ParagraphView {
   readonly markup: string;
 }
 
-export interface ChapterView {
+/** A chapter as the hub answers it. */
+interface ChapterWire {
   readonly novelName: string;
   readonly chapterNumber: number;
   readonly paragraphs: readonly ParagraphView[];
   readonly found: boolean;
+}
+
+export interface ChapterView extends ChapterWire {
+  /**
+   * True when the *call* did not get through, as opposed to the server saying there is no
+   * such chapter. The difference matters: an empty answer is the end of the novel, a failed
+   * call is a connection to wait out and retry (D28).
+   */
+  readonly failed: boolean;
 }
 
 /** One hit from a novel search. `slug` is the name every other call uses. */
@@ -80,17 +90,71 @@ export interface ReadingSessionView {
   readonly resuming: boolean;
 }
 
+/**
+ * What the page shows about the link to the server: connected, or trying to get back. There
+ * is no third state — the client never stops trying (D28).
+ */
+export type ConnectionState = "connected" | "reconnecting";
+
 export interface ReaderConnectionCallbacks {
   onDefinition(view: DefinitionView): void;
   onTranslation(term: string, translation: TranslationView): void;
   onVocabularyChanged(term: string, isSaved: boolean): void;
+  onConnectionStateChanged(state: ConnectionState): void;
+}
+
+/** How long to wait between attempts to get the connection back. */
+const reconnectDelayInMilliseconds = 1000;
+
+/**
+ * How long a hub call waits for a dropped connection before giving up on this attempt. The
+ * reader is not told to reload: the caller retries once the connection returns.
+ */
+const connectionWaitInMilliseconds = 30_000;
+
+const delay = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+/**
+ * A 401 from the hub means the auth cookie is gone, not that the network is down — retrying
+ * would loop forever on a session that is over. The page goes back to the login screen.
+ */
+function isSessionExpired(error: unknown): boolean {
+  return error instanceof signalR.HttpError && error.statusCode === 401;
 }
 
 export class ReaderConnection {
   readonly #connection: SignalR.HubConnection;
+  readonly #callbacks: ReaderConnectionCallbacks;
+  /** Calls parked until the connection is back; resolved by {@link #setState}. */
+  readonly #waiters = new Set<() => void>();
+  /** Unset until the first attempt settles, so that first answer always reaches the page. */
+  #state: ConnectionState | undefined;
+  /** Guards against two connect loops running at once. */
+  #connecting = false;
 
   constructor(callbacks: ReaderConnectionCallbacks) {
-    this.#connection = new signalR.HubConnectionBuilder().withUrl("/signalr").build();
+    this.#callbacks = callbacks;
+
+    this.#connection = new signalR.HubConnectionBuilder()
+      .withUrl("/signalr")
+      // A second apart, for as long as it takes: a reader who put their phone down mid-
+      // chapter comes back to a page that has quietly reconnected (D28).
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: (context) =>
+          isSessionExpired(context.retryReason) ? null : reconnectDelayInMilliseconds,
+      })
+      .build();
+
+    this.#connection.onreconnecting(() => this.#setState("reconnecting"));
+    this.#connection.onreconnected(() => this.#setState("connected"));
+
+    // Reached only when the retry policy above gave up — an expired session — or when the
+    // hub closed the connection outright. Either way the loop below decides what happens.
+    this.#connection.onclose((error) => {
+      this.#setState("reconnecting");
+      void this.#connectWithRetry(error);
+    });
 
     this.#connection.on("ReturnDefinition", (payload: DefinitionWire) => {
       callbacks.onDefinition({
@@ -122,13 +186,14 @@ export class ReaderConnection {
     });
   }
 
+  /** Connects, and keeps trying until it does. Resolves once the hub has answered. */
   async start(): Promise<void> {
-    await this.#connection.start();
+    await this.#connectWithRetry();
   }
 
   /** The reading session. Anything that goes wrong here is fatal to the page, so it throws. */
   async getReadingSession(): Promise<ReadingSessionView> {
-    return await this.#connection.invoke<ReadingSessionView>("GetReadingSession");
+    return await this.#call<ReadingSessionView>("GetReadingSession");
   }
 
   /**
@@ -137,7 +202,7 @@ export class ReaderConnection {
    */
   async searchNovels(query: string): Promise<readonly NovelSearchResult[]> {
     try {
-      return await this.#connection.invoke<NovelSearchResult[]>("SearchNovels", query);
+      return await this.#call<NovelSearchResult[]>("SearchNovels", query);
     } catch (error: unknown) {
       console.error(`Novel search failed for '${query}':`, error);
       return [];
@@ -146,50 +211,139 @@ export class ReaderConnection {
 
   /** Where this reader left off in one novel, for opening it from the library menu. */
   async getNovelProgress(novelName: string): Promise<ReadingSessionView> {
-    return await this.#connection.invoke<ReadingSessionView>("GetNovelProgress", novelName);
+    return await this.#call<ReadingSessionView>("GetNovelProgress", novelName);
   }
 
   /**
    * A whole chapter. A chapter that would not load comes back with `found: false` and no
    * paragraphs rather than throwing — the source site answers 200 with an empty page often
-   * enough that the page has to cope with it.
+   * enough that the page has to cope with it. A call that never got through is marked
+   * `failed` as well, so the page can retry it instead of reading it as the end of the
+   * novel (D28).
    */
   async loadChapter(novelName: string, chapterNumber: number): Promise<ChapterView> {
     try {
-      return await this.#connection.invoke<ChapterView>("LoadChapter", novelName, chapterNumber);
+      const chapter = await this.#call<ChapterWire>("LoadChapter", novelName, chapterNumber);
+      return { ...chapter, failed: false };
     } catch (error: unknown) {
       console.error(`Could not load chapter ${chapterNumber} of '${novelName}':`, error);
-      return { novelName, chapterNumber, paragraphs: [], found: false };
+      return { novelName, chapterNumber, paragraphs: [], found: false, failed: true };
     }
   }
 
   /** Fire-and-forget bookmark; a lost one costs the reader nothing but a scroll. */
   reportProgress(novelName: string, chapterNumber: number, paragraphNumber: number): void {
-    void this.#invoke("ReportProgress", novelName, chapterNumber, paragraphNumber);
+    void this.#send("ReportProgress", novelName, chapterNumber, paragraphNumber);
   }
 
   requestDefinition(surfaceForm: string): void {
-    void this.#invoke("GetDefinition", surfaceForm);
+    void this.#send("GetDefinition", surfaceForm);
   }
 
   saveWord(novelName: string, surfaceForm: string): void {
-    void this.#invoke("SaveWord", novelName, surfaceForm);
+    void this.#send("SaveWord", novelName, surfaceForm);
   }
 
   deleteWord(surfaceForm: string): void {
-    void this.#invoke("DeleteWord", surfaceForm);
+    void this.#send("DeleteWord", surfaceForm);
   }
 
   requestTranslation(surfaceForm: string): void {
-    void this.#invoke("Translate", surfaceForm);
+    void this.#send("Translate", surfaceForm);
+  }
+
+  /**
+   * Every call goes through here, so none of them is thrown away just because it was made
+   * during a gap: a call waits for the connection to come back before it is sent (D28).
+   */
+  async #call<T>(method: string, ...args: unknown[]): Promise<T> {
+    await this.#whenConnected(connectionWaitInMilliseconds);
+    return await this.#connection.invoke<T>(method, ...args);
   }
 
   /** A failed hub call is logged, never thrown at the reader mid-chapter. */
-  async #invoke(method: string, ...args: unknown[]): Promise<void> {
+  async #send(method: string, ...args: unknown[]): Promise<void> {
     try {
-      await this.#connection.invoke(method, ...args);
+      await this.#call(method, ...args);
     } catch (error: unknown) {
       console.error(`Hub call '${method}' failed:`, error);
     }
+  }
+
+  /**
+   * Connects, waiting a second between attempts, until the hub answers. An expired session
+   * is the one thing worth stopping for: no amount of retrying will fix a missing cookie, so
+   * the reader is sent to the login screen.
+   */
+  async #connectWithRetry(closeError?: Error): Promise<void> {
+    if (this.#connecting) return;
+    this.#connecting = true;
+
+    try {
+      if (this.#returnToLoginIfSessionExpired(closeError)) return;
+
+      for (;;) {
+        if (this.#connection.state === signalR.HubConnectionState.Connected) {
+          this.#setState("connected");
+          return;
+        }
+
+        try {
+          await this.#connection.start();
+          this.#setState("connected");
+          return;
+        } catch (error: unknown) {
+          if (this.#returnToLoginIfSessionExpired(error)) return;
+
+          console.error("Could not reach the hub; trying again:", error);
+          this.#setState("reconnecting");
+          await delay(reconnectDelayInMilliseconds);
+        }
+      }
+    } finally {
+      this.#connecting = false;
+    }
+  }
+
+  #returnToLoginIfSessionExpired(error: unknown): boolean {
+    if (!isSessionExpired(error)) return false;
+
+    window.location.href = "/Login";
+    return true;
+  }
+
+  /**
+   * Resolves as soon as the connection is up, or after `timeoutInMilliseconds` if it is not.
+   * The call that was waiting then fails in the ordinary way and the page retries it — a
+   * wait that never ended would leave the chapter loader wedged instead.
+   */
+  async #whenConnected(timeoutInMilliseconds: number): Promise<void> {
+    if (this.#connection.state === signalR.HubConnectionState.Connected) return;
+
+    await new Promise<void>((resolve) => {
+      const waiter = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+
+      const timer = window.setTimeout(() => {
+        this.#waiters.delete(waiter);
+        resolve();
+      }, timeoutInMilliseconds);
+
+      this.#waiters.add(waiter);
+    });
+  }
+
+  #setState(state: ConnectionState): void {
+    const changed = this.#state !== state;
+    this.#state = state;
+
+    if (state === "connected") {
+      for (const waiter of [...this.#waiters]) waiter();
+      this.#waiters.clear();
+    }
+
+    if (changed) this.#callbacks.onConnectionStateChanged(state);
   }
 }

@@ -131,8 +131,15 @@ TypeScript, no framework and no bundler. Sources live in `WebApi/src/`; `tsc` em
 - `src/login.ts` — the login screen. Posts JSON and acts on the answer in place, so a rejected password does not cost a reload.
 - `src/input/keyboardRouter.ts` — a stack of named key modes, innermost first (D6). Opening the definition box or the menu pushes a mode; closing pops it. Text fields are left alone, so a focused filter input keeps its own keys.
 - `src/reading/` — `connection.ts` (the hub calls and their wire shapes), `progressReporter.ts` (the debounced bookmark), `scroller.ts` (j/k smooth scroll and the scroll lock), `selection.ts`, `underliner.ts`.
-- `src/ui/definitionBox.ts` — the definition panel: senses paged with j/k, save/delete, and the translation block filled in by `t`.
+- `src/ui/definitionBox.ts` — the definition panel: opened by the *request* showing `loading…`, filled in by the answer, `connection timeout` in red after five seconds of silence; senses paged with j/k, save/delete, and the translation block filled in by `t`. Its body is a fixed three lines tall in CSS — do not measure it from the content (D27).
 - `src/interactive-select/module.ts` — `NavigationMenu`, the TUI panel opened with `n`. It is a **stack of `MenuScreen`s**, not one list: activating a row can `push` another screen, Escape pops (clearing an active filter first) and closes at the root. It renders the panel itself and handles no keys — the caller binds `move`/`activate`/`back` through the router — except inside the filter field, which owns its keystrokes while focused.
+
+The top-right corner is a stack (`.reader-affordances`): the `n navigate` hint, and under it
+the `d definition` button a touch reader gets while text is selected — the phone's `d` key
+(D26). A settled selection no longer opens anything by itself. The bottom-left `reconnecting…`
+chip is the only sign of a dropped connection; the client reconnects once a second on its own,
+hub calls wait for it rather than failing, and a chapter load that a drop cut short is retried
+when it returns — which is why `ChapterView` carries `failed` as well as `found` (D28).
 
 All three panels share one palette: `wwwroot/tui.css` defines the `--tui-*` tokens and must be linked before `interactive-select/styles.css`, `definition-box.css` and `login.css`, which draw from it. Restyling the chrome means editing the tokens, not the panels.
 

@@ -21,19 +21,40 @@
 	-->
 	<nav id="navigation-container" aria-label="Navigate through your novels, search new novels" hidden></nav>
 	<!--
-		The top-right hint. On a keyboard it is decorative — the `n` key does the work, so it is
-		aria-hidden and not focusable. On a touch device src/input/pointer.ts makes it the real
-		control: a tappable button that opens the same menu (see the `touch-input` styles).
+		The top-right chrome, stacked: the navigation hint first, the definition button beneath
+		it. Both are corner buttons on touch and the definition one is only ever shown there.
 	-->
-	<button id="navigation-affordance" class="navigation-affordance" type="button"
-			aria-label="Open navigation menu" aria-hidden="true" tabindex="-1">
-		<span class="navigation-affordance__icon" aria-hidden="true">☰</span>
-		<span class="navigation-affordance__key" aria-hidden="true">n</span>
-		<span class="navigation-affordance__label">navigate</span>
-	</button>
+	<div class="reader-affordances">
+		<!--
+			On a keyboard this is decorative — the `n` key does the work, so it is aria-hidden and
+			not focusable. On a touch device src/input/pointer.ts makes it the real control: a
+			tappable button that opens the same menu (see the `touch-input` styles).
+		-->
+		<button id="navigation-affordance" class="navigation-affordance" type="button"
+				aria-label="Open navigation menu" aria-hidden="true" tabindex="-1">
+			<span class="navigation-affordance__icon" aria-hidden="true">☰</span>
+			<span class="navigation-affordance__key" aria-hidden="true">n</span>
+			<span class="navigation-affordance__label">navigate</span>
+		</button>
+		<!--
+			The phone's `d` key. src/realTimeReader.ts unhides it while text is selected in the
+			reading column, and only on a touch device; a keyboard presses `d` instead (D26).
+		-->
+		<button id="definition-affordance" class="definition-affordance" type="button"
+				aria-label="Show the definition of the selected text" hidden>
+			<span class="definition-affordance__key" aria-hidden="true">d</span>
+			<span class="definition-affordance__label">definition</span>
+		</button>
+	</div>
 	<article id="novel-paragraphs" aria-label="Novel paragraphs">
 
 	</article>
+
+	<!--
+		Shown only while the client is reconnecting, so a silent connection is never mistaken
+		for a slow one (D28). src/realTimeReader.ts fills it in.
+	-->
+	<div id="connection-status" class="connection-status" role="status" hidden></div>
 
 	<!-- Classic script: defines the global `signalR`. Must run before the module that uses it. -->
 	<script src="./lib/microsoft-signalr/signalr.min.js"></script>

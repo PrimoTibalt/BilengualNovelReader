@@ -13,6 +13,8 @@
 	--tui-dim: #8a8a8a;
 	--tui-accent: #c8b98f;
 	--tui-rule: #333;
+	/* Something is wrong and the reader has to be told: a timed-out lookup, a lost connection. */
+	--tui-error: #c46a6a;
 	--tui-selection: rgba(200, 185, 143, 0.14);
 	--tui-mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", ui-monospace, monospace;
 

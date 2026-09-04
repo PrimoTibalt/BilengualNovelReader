@@ -131,7 +131,7 @@ listening to the document directly.
 
 ---
 
-## D7 — Definition box height is measured from the first sense and then locked
+## D7 — Definition box height is measured from the first sense and then locked *(superseded by D27)*
 
 **Status:** Provisional · 2026-08-31
 
@@ -591,7 +591,7 @@ going to paint.
 
 ---
 
-## D24 — Touch readers get tapped equivalents of the keyboard, gated on "no keyboard"
+## D24 — Touch readers get tapped equivalents of the keyboard, gated on "no keyboard" *(its auto-define superseded by D26)*
 
 **Status:** Adopted · 2026-09-04
 
@@ -704,3 +704,128 @@ assets answered `immutable`, an unversioned direct hit answered `no-cache`, and 
 (`/_v/deadbeef/…`) 404'd. (The check ran against the developer's own instance because this
 session's sandbox kills any process that binds a port — a build, which binds nothing, runs
 fine.)
+
+---
+
+## D26 — On touch, a selection offers a button; it does not open the box
+
+**Status:** Adopted · 2026-09-04 · supersedes the auto-define half of D24
+
+**Context.** D24 gave a touch reader definitions by looking a settled selection up on its own,
+on the reasoning that with no `d` key the selection *is* the gesture. On a phone that turned
+out to be the wrong trade: selecting text is also how a reader marks their place, re-reads a
+phrase or simply mis-taps, and every one of those was answered by a panel that covered the
+text and locked the page. The lookup was never the problem — deciding *for* the reader that
+they wanted one was.
+
+**Decision.** A settled selection inside the reading column unhides a button in the top-right
+stack, directly under the `n navigate` hint, reading **`d definition`**. Tapping it runs
+exactly what `d` runs. Nothing opens by itself any more.
+
+- **The corner is now a stack, not two absolutes.** `.reader-affordances` is the fixed
+  top-right box; the navigation hint and the definition button are flex items in it with a
+  gap. "Beneath the navigation hint" is then a fact of the layout rather than an offset the
+  two rules have to keep agreeing on, and the hint's own `position: fixed` is gone.
+- **The selection is captured when the button appears and re-measured when it is tapped.**
+  `SelectedTerm` now carries a cloned `Range`. A tap on a corner button is exactly the sort of
+  thing a browser may answer by dropping the live selection, and the reader may have scrolled
+  between selecting and tapping; the clone survives the first and re-measuring handles the
+  second, so the box's tail still points at the words.
+- **It says `d definition` although a phone has no `d`.** The label is what the reader is told
+  to look for, and it is what the desktop hint says for the same action; a second name for one
+  action would be worse than a key badge nobody presses.
+
+**Consequences.**
+- Desktop is untouched again: the button is unhidden only from the `isTouchPrimary` wiring, so
+  a keyboard never sees it, and `d` still does the work.
+- One behaviour with two triggers, as D24 had it — the button and the key call the same lookup.
+- The button hides itself whenever it would be wrong: the box is open, the menu is open (which
+  covers that corner), or the selection is gone.
+
+---
+
+## D27 — The box opens on the request, not on the answer, and is always three lines tall
+
+**Status:** Adopted · 2026-09-04 · supersedes D7
+
+**Context.** The box was created when the definition arrived. Until it did, the page looked
+precisely the way it looks when nothing was pressed at all — so a slow dictionary, a slow
+network and a connection that had silently died were three states the reader could not tell
+apart, and the only move available was to press `d` again.
+
+**Decision.** The *request* opens the box. It shows `loading…` under the word, fills itself in
+when the answer arrives, and after five seconds of silence says **`connection timeout`** in
+red. Its body is a fixed three lines tall whatever it holds.
+
+- **The timer lives in the box**, started by `open` and cleared by `showDefinition` or by
+  closing. Nothing else has to remember that a lookup is outstanding, and a box that is closed
+  cannot leave one behind.
+- **A late answer is still accepted** and replaces the timeout message. The request was never
+  cancelled — only its silence was reported — and with hub calls now waiting for a dropped
+  connection (D28), the answer to a lookup made during an outage genuinely does arrive later.
+- **Three lines in CSS, not the first sense measured (D7).** D7's reason — the panel must not
+  resize under the reader — has become stronger rather than weaker: the content now changes at
+  least twice, and the first thing in the body is the single short line `loading…`, so locking
+  to what was measured first would guarantee the box jumped the instant the definition landed.
+  A constant is the only height that never moves. Longer senses scroll inside the frame,
+  exactly as they did under D7.
+- **The waiting states are not the loaded state.** With no term yet there is nothing to save,
+  delete or translate, so the hint bar and the tap toolbar offer only `esc close` until the
+  definition is in.
+
+**Consequences.**
+- Three lines is the entire budget: a long sense, or a sense with an example and a translation
+  under it, scrolls. That is the price of never moving, and it is the one the reader asked for.
+- `--tui-error` joins the palette in `tui.css`, so the timeout message and the reconnecting
+  notice (D28) are the same red rather than two hard-coded ones.
+- A definition that takes longer than five seconds now *says* five seconds passed, which makes
+  a slow dictionary provider visible for the first time (D1 measured Wiktionary at up to 3.7 s,
+  so the threshold sits deliberately above that).
+
+---
+
+## D28 — The client reconnects on its own, once a second, and calls wait for it
+
+**Status:** Adopted · 2026-09-04
+
+**Context.** Reading a chapter through to the end and scrolling into the next one reliably
+needed a page reload. Two faults, one on top of the other:
+
+1. **The connection never came back.** `new HubConnectionBuilder().withUrl("/signalr").build()`
+   has no reconnection whatsoever. A connection dropped while the reader was reading — a phone
+   locking its screen, a network switch, a proxy's idle timeout — stayed dropped, and every
+   later call failed against a dead connection.
+2. **The loss was then read as the end of the novel.** `loadChapter` catches a failed call and
+   answers `found: false`, which is exactly the shape "there is no such chapter" has. The page
+   latched `reachedEnd`, and no later scroll tried again even once the server was reachable.
+
+**Decision.** Three changes, and one guard.
+
+- **`withAutomaticReconnect`, a second apart, for as long as it takes.** The retry policy
+  returns a fixed 1000 ms and never gives up.
+- **Every hub call waits for the connection** before it is sent, up to 30 seconds, instead of
+  throwing the moment it finds the connection down. A definition asked for during a blip is
+  delivered when the blip ends; so is a bookmark.
+- **`ChapterView.failed` separates a call that did not get through from a chapter that is not
+  there.** Only a genuine empty answer sets `reachedEnd`. A failed load parks a retry that runs
+  as soon as the connection is back — necessary because the reader is at the *bottom* of the
+  page when it happens, so there is no further scroll event coming to try again with.
+- **The guard: a 401 is not a network fault.** The auth cookie is gone, and retrying every
+  second forever would hide a session that is simply over, so that one case stops the loop and
+  returns the reader to `/Login`. It is checked in both places an error can surface — the retry
+  policy's `retryReason` and `onclose`.
+
+**Also visible.** A `reconnecting…` chip in the bottom-left corner, present only while the
+client is trying to get back. Between it and the box's `loading…`, "the server is slow" and
+"the server is gone" no longer look the same (D27).
+
+**Consequences.**
+- `start()` no longer fails on an unreachable server: it keeps trying and resolves when the
+  hub answers, so a reader who opens the page a moment before the server is up gets their page
+  rather than "Could not reach the server."
+- Nothing had to be re-established on reconnect. The hub is stateless per connection — the
+  reader comes from the cookie (D20) and chapters from Mongo — so a new connection id costs
+  nothing and no subscription has to be replayed.
+- **What actually dropped the connection was never identified**, and deliberately so: it was
+  reported from a phone, where a WebSocket has a dozen ordinary ways to die. The client now
+  recovers from all of them without needing to know which.

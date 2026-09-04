@@ -7,6 +7,12 @@ export interface SelectedTerm {
   readonly text: string;
   /** Viewport coordinates of the selection, for positioning the box. */
   readonly rect: DOMRect;
+  /**
+   * A detached copy of the selected range, so a selection captured now can still be measured
+   * later — after the page has scrolled under it, or after the browser dropped the live
+   * selection because something else was tapped (D26).
+   */
+  readonly range: Range;
 }
 
 /** Longest phrase worth looking up; matches the server's phrase cap (D4). */
@@ -24,7 +30,18 @@ export function readSelection(): SelectedTerm | undefined {
   const rect = range.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return undefined;
 
-  return { text, rect };
+  return { text, rect, range: range.cloneRange() };
+}
+
+/**
+ * Where a captured range sits on screen *now*. Undefined once the range measures nothing —
+ * its text was replaced, so the selection it stood for is gone.
+ */
+export function rectOfRange(range: Range): DOMRect | undefined {
+  const rect = range.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return undefined;
+
+  return rect;
 }
 
 /** The rect of an already-underlined word, used when one is clicked. */

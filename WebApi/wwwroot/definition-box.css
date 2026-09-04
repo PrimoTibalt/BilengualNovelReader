@@ -72,9 +72,16 @@ html.scroll-locked {
 	white-space: nowrap;
 }
 
+/*
+ * Always three lines tall, whatever is in it: `loading…`, a one-line sense, a long one, or a
+ * sense with a translation under it. The box opens the moment a lookup starts, so a height
+ * that followed its content would resize under the reader the instant the answer landed
+ * (D27). Anything taller scrolls inside the frame.
+ */
 .definition-box__body {
+	height: calc(3 * 1.5em);   /* three lines at the panel's 1.5 line-height */
 	padding: 0.75em;
-	overflow-y: auto;      /* a longer sense scrolls inside the locked height (D7) */
+	overflow-y: auto;
 	overscroll-behavior: contain;
 }
 
@@ -100,6 +107,18 @@ html.scroll-locked {
 .definition-box__empty {
 	margin: 0;
 	color: var(--definition-dim);
+}
+
+/* Waiting on the server, and having given up waiting on it (D27). */
+.definition-box__loading {
+	margin: 0;
+	color: var(--definition-dim);
+	font-style: italic;
+}
+
+.definition-box__error {
+	margin: 0;
+	color: var(--tui-error);
 }
 
 /*
@@ -214,4 +233,44 @@ html.touch-input .definition-box__hints {
 	border-right: 2px solid var(--definition-border);
 	border-bottom: 2px solid var(--definition-border);
 	transform: rotate(45deg);
+}
+
+/*
+ * The `d definition` button: a touch reader's `d` key, shown in the top-right stack under the
+ * navigation hint while text is selected (D26). It is unhidden from script and only on a
+ * touch device, so it needs no media query of its own — but it must obey `hidden`, which the
+ * display below would otherwise beat.
+ */
+.definition-affordance {
+	display: inline-flex;
+	align-items: center;
+	pointer-events: auto;
+	cursor: pointer;
+	appearance: none;
+	margin: 0;
+	padding: 0.4em 0.7em;
+	font-family: var(--definition-mono);
+	font-size: var(--tui-scale);
+	line-height: 1.5;
+	color: var(--definition-text);
+	background-color: var(--definition-bg);
+	border: 2px solid var(--definition-border);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+	user-select: none;
+}
+
+.definition-affordance[hidden] {
+	display: none;
+}
+
+.definition-affordance:active {
+	background-color: var(--tui-selection);
+}
+
+/* The key badge, drawn exactly like the navigation hint's. */
+.definition-affordance__key {
+	border: 1px solid var(--tui-rule);
+	padding: 0 0.4em;
+	margin-right: 0.4em;
+	color: var(--definition-text);
 }

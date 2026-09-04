@@ -229,11 +229,8 @@ html.touch-input .navigation-list__option {
  * Closed-state affordance. The menu used to sit open on the page; now that it is a mode,
  * this is what tells the reader the key exists.
  */
+/* Positioned by the `.reader-affordances` stack in realTimeReader.css, not by itself. */
 .navigation-affordance {
-	position: fixed;
-	top: 12px;
-	right: 12px;
-	z-index: 80;
 	font-family: var(--tui-mono);
 	font-size: var(--tui-scale);
 	color: var(--tui-dim);
@@ -250,6 +247,10 @@ html.touch-input .navigation-list__option {
 	display: inline-flex;
 	align-items: center;
 	line-height: 1.5;
+}
+
+.navigation-affordance[hidden] {
+	display: none;
 }
 
 .navigation-affordance__key {
@@ -283,6 +284,10 @@ html.touch-input .navigation-affordance__icon {
 	display: inline;
 }
 
-html.touch-input .navigation-affordance__key {
+html.touch-input .navigation-affordance[hidden] {
+	display: none;
+}
+
+.navigation-affordance__key {
 	display: none;
 }
