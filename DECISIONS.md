@@ -187,7 +187,7 @@ reader from the authentication cookie. The page no longer names anyone.
 
 ---
 
-## D10 — Translation (`t`) answers with a server-side stub
+## D10 — Translation (`t`) answers with a server-side stub *(superseded by D31)*
 
 **Status:** Adopted · 2026-08-31 (supersedes the earlier "wired but not implemented")
 
@@ -957,3 +957,195 @@ against the running app (it had been 10px with `thin`, and the default before th
   standard properties outside the `@supports` block to guard against that would break today's
   Blink immediately, so the trade is deliberate.
 - Both bars are `--tui-scroll-thumb` on `--tui-scroll-track`, square, in both engines.
+
+---
+
+## D31 — Translation is MyMemory, and the reader is asked for two things in the box itself
+
+**Status:** Adopted · 2026-09-04 · supersedes D10
+
+**Context.** D10 shipped the whole round trip with a stub answer, and left one open question:
+which language pair, and the word or the sentence around it. The plumbing has been waiting for
+that answer ever since. It is answered here as **the word** — the box translates the term it is
+already showing a definition for — and sentence-level is left undone, because it would change
+what the client sends and how the box renders it rather than just which provider is called.
+
+**The provider is MyMemory** (D10 named it as a candidate). No key, no account, no signup form,
+and nothing is verified: a request that carries an email address gets ten times the daily
+character allowance of an anonymous one — 50,000 rather than 5,000. That is the whole reason
+the reader is asked for one.
+
+**Two things follow from the email not being an identity.**
+
+- It is stored **per reader**, on the account row, because it is that reader's allowance being
+  spent. Two nullable columns on the SQLite `accounts` table (the existing database is migrated
+  in place; SQLite has no `ADD COLUMN IF NOT EXISTS`, so the column list decides).
+- Both null means "never set up", which is exactly what makes `t` open a form instead of asking
+  for a translation nobody can fetch. There is no third state to keep consistent.
+
+**The form lives in the definition box, not in a settings screen.** The reader is already
+looking at the word they want translated when they discover they need to configure something;
+sending them somewhere else to do it, and then back, is the worse of the two designs. The box
+becomes the form and returns to the definition when it is done or cancelled — Escape backs out
+of the form without closing the box.
+
+**Its keys are the navigation menu's keys.** Type to narrow the list, Enter to go forward,
+Escape to back out. The email field takes Enter to advance (refusing to advance on something
+that is not an address), the filter narrows the language list, Enter hands over to the list,
+Enter there submits. A tap on a row does what Enter does, which is how the same form works on a
+phone. Nothing here is a new interaction to learn.
+
+**The first translation carries its own settings, because the two calls race.** Finishing the
+form fires the save *and* the translation together. The translation therefore accepts an
+optional email and language and uses them in preference to the stored ones; every later request
+omits them. The alternative — waiting for the save to land before translating — costs the
+reader a visible round trip on the first word they ever look up, to avoid a race that this
+removes outright.
+
+**The page's checks are a courtesy; the server's are the rule.** The form refuses a malformed
+address before spending a round trip, and `TranslationSettingsValidator` refuses it again on the
+way in, for both the save *and* the overrides above. The language list is defined once on the
+server and sent with the reading session, so the list the reader picks from and the list the
+server accepts cannot drift — there is a test that walks the offered list and asserts every row
+validates.
+
+**Out of allowance, MyMemory answers `200` with a shouted warning where the translation goes.**
+That string is recognised and refused rather than rendered, which is the same mistake D21 was
+written about: a provider's apology must never be presented as its answer.
+
+**Consequences.**
+- The body's fixed three lines (D27) are relaxed for the form only. That rule exists so a
+  *definition* cannot resize under the reader; a form in the same frame is a different thing and
+  has to be as tall as its fields.
+- `e` opens the form again to edit, from the box, and appears in the hint bar and the touch
+  toolbar — without it a touch reader could configure translation once and never change it.
+- **Translations are not cached.** Definitions are (D2) and translations should be, for the same
+  reasons; at one reader and 50,000 characters a day it is not yet a constraint, so it is left
+  as the obvious next step rather than built now.
+- Nothing is sent longer than 450 bytes: MyMemory takes 500, and a request that would be
+  refused is not worth making. The four-word selection cap (D4) means this is unreachable today.
+
+**Verified.** End to end against the live API from the reading page: `t` on an unconfigured
+reader opened the form with the email field focused and 35 languages from the server; a
+malformed address was refused with focus held; a valid one advanced to the filter; typing "rus"
+narrowed the list to Russian; Enter handed over to the list and Enter there submitted. The
+settings landed in SQLite, and **"experience" came back as "опыт"**. `e` reopened the form
+prefilled, and Escape returned to the definition with the translation still in place.
+136 tests pass, 24 of them new.
+
+**Verified on a phone too**, with real touch and a real soft keyboard over adb: long-press to
+select, the `d definition` button, `translate`, the form, typing, and the reply — `crocodile`
+came back as `крокодил`.
+
+**That run found four things the desktop checks could not.** Worth recording, because the
+desktop verification was not careless — it read every value out of the DOM and every value was
+right. What it could not see was the *layout*:
+
+1. The `language` label collided with its field. The label box was `7ch`; the word is eight
+   characters. Reading `input.placeholder` from the DOM says nothing about where it is drawn.
+2. **The validation message was invisible exactly when it mattered.** It rendered at the foot
+   of the form, which on a phone is behind the soft keyboard — so a refused email looked like a
+   dead Enter key. It now sits directly under the email field.
+3. Tapping the language list made Firefox open its **own** native picker while the click
+   handler submitted underneath it, stranding the picker over the page. The click-to-submit is
+   gone: touch picks from the native list and taps `save`, a keyboard presses Enter. One
+   gesture each, and no fight with the browser.
+4. **The translation arrived below the fold.** It is appended under the sense, inside a body
+   three lines tall (D27), so on both platforms it landed out of sight — the desktop test read
+   it from the DOM and never noticed. The box now scrolls it into view.
+
+**The copy is one line.** The form first explained *why* an email was wanted; the reader of this
+app is the person who built it and does not need telling. Cutting that also bought back three
+lines of the language list from behind the keyboard, which is the better argument for it.
+
+---
+
+## D32 — A phrase is translated from the reading page, and the translation never waits for the definition
+
+**Status:** Adopted · 2026-09-04
+
+**Context.** D31 put translation inside the definition box, which meant it only existed for
+things that *have* a definition — one word. A phrase has no dictionary entry, so the one case
+where a translation is most useful was the one case with no way to ask for it.
+
+**Decision.** `t` on a selection of more than one word translates it, from reading mode; on
+touch a third corner button, `t translate`, appears under `d definition` for the same
+selections. The definition is asked for at the same moment and shown in the same box, but
+**nothing waits on it**: whichever answer arrives first is rendered, and the definition keeps
+its own `loading…` line above the translation until it lands.
+
+**Only for more than one word.** A single word already has `d`, and its translation lives
+inside that box behind `t` — offering a second route to the same place would be clutter.
+
+**Two things had to change to make "in parallel" true rather than nominal.**
+
+- **Answers are matched by surface form, not by the normalised term.** The page used to pair a
+  translation with its box by comparing the term the *definition* came back with. Asking for
+  both at once breaks that: when the translation lands there may be no definition yet, and so
+  no term to compare. `TranslationResponse` now echoes the surface form that was asked for.
+- **SignalR serialises hub invocations per connection.** `MaximumParallelInvocationsPerClient`
+  defaults to **1**, so the translation queued behind the definition — and a phrase's definition
+  is slow, because it misses Wiktionary and falls through to the second provider (D1). Measured
+  on a phone before the change: the definition gave up at the box's five-second mark while the
+  translation, already answered by the provider in 1.4 s, was still shown as `translating…`.
+  Raised to 4. **This does not weaken D17** — chapters are serialised by the `UserRequestGate`,
+  not by this setting.
+
+**Measured after the change**, on the phrase "could travel": the translation arrived at
+**1.2 s** and the definition at **7.2 s** — six seconds apart, in one box, neither blocking the
+other. Verified on the phone too, with real touch: the third button appears only once a second
+word is in the selection, and the box opens showing `loading…` and `translating…` together.
+
+**Two things to know about it.**
+
+- **The definition's timeout message is now misleading in this case.** A phrase routinely takes
+  ~7 s to resolve, so the box says `connection timeout` (D27's wording, chosen when the only
+  reason for silence was a dead connection) while the connection is demonstrably fine — the
+  translation arrived over it a second earlier. The message is the reader's own spec, so it is
+  left as it is rather than quietly reworded.
+- **MyMemory is a translation *memory*, not only a translator.** For short, common phrases it
+  can return a crowd-sourced segment that is simply wrong: "It was" came back as "Because it
+  seems impossible to walk", where "could travel" gave a clean "может путешествовать". The API
+  reports a `match` score that could be used to refuse the poor ones; nothing does yet.
+
+---
+
+## D33 — Red is reserved for what is actually wrong
+
+**Status:** Adopted · 2026-09-04 · refines D27
+
+**Context.** D27 gave the definition box a five-second timer and, on expiry, the red message
+`connection timeout`. That was right when the only reason for silence was a dead connection.
+It stopped being right once phrases were translatable (D32): a phrase misses Wiktionary and
+falls through to the slower second provider (D1), so **seven seconds is its ordinary speed**.
+The box was calling a healthy connection broken several times an evening — measured on a phone
+saying `connection timeout` a second *after* a translation had arrived over that same
+connection. Reported, fairly, as looking like a low-quality product.
+
+**Decision.** The timer no longer decides what the message says; it only decides *when* to say
+something. What it says comes from whether the connection is actually up — which the page
+already knows, because it tracks that state to drive the reconnect chip (D28).
+
+| after five seconds | message | treatment |
+|---|---|---|
+| connection is up | `still looking…` | dim, like `loading…` |
+| connection is down | `connection lost` | red |
+
+The state is pushed into the box as it changes, so a wait that becomes a real problem turns red
+without waiting for another timer, and one that recovers goes back to dim.
+
+**Both entry points are covered by construction.** A definition is loaded from `d` and, since
+D32, alongside `t` on a phrase — but both go through the same `open()` and the same timer, so
+there is one state machine to get right rather than two.
+
+**Verified**, both directions, on an uncached phrase and with the server stopped:
+
+```
+slow but connected     3999ms loading…   4999ms loading…   5999ms still looking…   (never red)
+connection actually down                 connection lost, rgb(196,106,106), chip "reconnecting…"
+```
+
+**Consequence.** D27's original requirement is still met — the reader can still tell a slow
+answer from a dead connection — but the two now read differently, and only one of them is
+alarming. The wording is deliberately plain rather than reassuring: `still looking…` says the
+thing is still happening, which is what a reader wants to know.

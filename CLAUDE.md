@@ -131,12 +131,19 @@ TypeScript, no framework and no bundler. Sources live in `WebApi/src/`; `tsc` em
 - `src/login.ts` — the login screen. Posts JSON and acts on the answer in place, so a rejected password does not cost a reload.
 - `src/input/keyboardRouter.ts` — a stack of named key modes, innermost first (D6). Opening the definition box or the menu pushes a mode; closing pops it. Text fields are left alone, so a focused filter input keeps its own keys.
 - `src/reading/` — `connection.ts` (the hub calls and their wire shapes), `progressReporter.ts` (the debounced bookmark), `scroller.ts` (j/k smooth scroll and the scroll lock), `selection.ts`, `underliner.ts`.
-- `src/ui/definitionBox.ts` — the definition panel: opened by the *request* showing `loading…`, filled in by the answer, `connection timeout` in red after five seconds of silence; senses paged with j/k, save/delete, and the translation block filled in by `t`. Its size is fixed in CSS — three lines tall and `min(46ch, calc(100% - 24px))` wide — and must not be measured from the content or it shrinks against the right edge of the screen (D27).
+- `src/ui/definitionBox.ts` — the definition panel: opened by the *request* showing `loading…`, filled in by the answer, after five seconds of silence, `still looking…` in dim when the connection is up and `connection lost` in red only when it is genuinely down (D33); senses paged with j/k, save/delete, and the translation block filled in by `t`. It is also
+  the translation **settings form** (`e`, or `t` before anything is configured): email then a
+  filtered language list, using the navigation menu's keys — type to narrow, Enter forward,
+  Escape back (D31). The form is the one thing exempt from the fixed body height. Its size is fixed in CSS — three lines tall and `min(46ch, calc(100% - 24px))` wide — and must not be measured from the content or it shrinks against the right edge of the screen (D27).
 - `src/interactive-select/module.ts` — `NavigationMenu`, the TUI panel opened with `n`. It is a **stack of `MenuScreen`s**, not one list: activating a row can `push` another screen, Escape pops (clearing an active filter first) and closes at the root. It renders the panel itself and handles no keys — the caller binds `move`/`activate`/`back` through the router — except inside the filter field, which owns its keystrokes while focused.
 
-The top-right corner is a stack (`.reader-affordances`): the `n navigate` hint, and under it
-the `d definition` button a touch reader gets while text is selected — the phone's `d` key
-(D26). A settled selection no longer opens anything by itself. The bottom-left `reconnecting…`
+The top-right corner is a stack (`.reader-affordances`): the `n navigate` hint, the
+`d definition` button a touch reader gets while text is selected — the phone's `d` key (D26) —
+and under that `t translate`, which appears only for a selection of **more than one word**
+(D32). `t` does the same from a keyboard, in reading mode. Both ask for the definition and the
+translation at once and render whichever lands first, which is why `AddSignalR` raises
+`MaximumParallelInvocationsPerClient` (the default of 1 queued the translation behind the
+definition) and why a translation is matched to its box by surface form rather than term. A settled selection no longer opens anything by itself. The bottom-left `reconnecting…`
 chip is the only sign of a dropped connection; the client reconnects once a second on its own,
 hub calls wait for it rather than failing, and a chapter load that a drop cut short is retried
 when it returns — which is why `ChapterView` carries `failed` as well as `found` (D28).
@@ -168,7 +175,9 @@ either side of the current one, because nothing reports a novel's chapter count.
 **`SearchNovelsRetriever` still returns two hard-coded rows** — it fetches the URL and
 discards the response — so search shows the same two novels whatever is typed. The live
 endpoint is `ajax/searchLive?keyword=…` (GET only; `total_chapter` is snake_case and needs a
-`[JsonPropertyName]` to bind). `Translate` answers with `TranslationResponse.Stub` (D10).
+`[JsonPropertyName]` to bind). Translation is live now (D31) — MyMemory, word-level, with the
+reader's email and target language stored as two nullable columns on the SQLite account row.
+**Translations are not cached** the way definitions are (D2); that is the obvious next step.
 
 Accounts have no password change, no reset, and no rate limit on sign-in attempts.
 

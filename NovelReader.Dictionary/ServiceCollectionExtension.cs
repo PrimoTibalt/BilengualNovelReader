@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using NovelReader.Domain.RealTimeReader.Definitions;
+using NovelReader.Domain.RealTimeReader.Translation;
 
 namespace NovelReader.Dictionary
 {
@@ -22,6 +23,12 @@ namespace NovelReader.Dictionary
 		/// already missed, and is cut off well before that.
 		/// </summary>
 		private static readonly TimeSpan FallbackTimeout = TimeSpan.FromSeconds(6);
+
+		/// <summary>
+		/// The reader is watching a panel that says "translating…" while this runs, and the box
+		/// gives up on its own after five seconds (D27) — so there is no point waiting longer.
+		/// </summary>
+		private static readonly TimeSpan TranslationTimeout = TimeSpan.FromSeconds(5);
 
 		public static void RegisterDictionaryProviders(this IServiceCollection services)
 		{
@@ -53,6 +60,19 @@ namespace NovelReader.Dictionary
 			]));
 
 			services.AddSingleton<DefinitionLookupService>();
+
+			// Translation lives here too: it is the same kind of thing as a dictionary provider —
+			// an outside language service reached over a named client with its own timeout (D31).
+			services.AddHttpClient(MyMemoryTranslationProvider.HttpClientName, client =>
+			{
+				client.BaseAddress = new Uri("https://api.mymemory.translated.net/");
+				client.Timeout = TranslationTimeout;
+				client.DefaultRequestHeaders.UserAgent.Clear();
+				client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
+			});
+
+			services.AddSingleton<ITranslationProvider, MyMemoryTranslationProvider>();
+			services.AddSingleton<TranslationService>();
 		}
 	}
 }

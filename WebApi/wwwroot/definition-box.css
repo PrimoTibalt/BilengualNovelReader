@@ -123,6 +123,94 @@ html.scroll-locked {
 	color: var(--definition-dim);
 }
 
+/*
+ * The translation settings form (D31). The three-line rule above exists so a *definition*
+ * cannot resize under the reader; a form is a different thing in the same frame, and has to be
+ * as tall as its fields — capped so it still fits a phone in landscape.
+ */
+.definition-box__body--form {
+	height: auto;
+	max-height: 60vh;
+}
+
+.definition-box__form-intro {
+	margin: 0 0 0.9em;
+}
+
+.definition-box__form-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6em;
+	margin-bottom: 0.6em;
+}
+
+.definition-box__form-label {
+	flex: none;
+	width: 9ch;          /* "language" is eight characters; 7ch collided with the field */
+	color: var(--definition-dim);
+}
+
+/* Field and list share the terminal-input look: a rule underneath, no box. */
+.definition-box__field {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: none;
+	border-bottom: 1px solid var(--tui-rule);
+	outline: none;
+	padding: 0.15em 0;
+	color: var(--definition-text);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+}
+
+.definition-box__field::placeholder {
+	color: var(--definition-dim);
+}
+
+.definition-box__field:focus {
+	border-bottom-color: var(--definition-accent);
+}
+
+.definition-box__list {
+	width: 100%;
+	background-color: var(--definition-bg);
+	border: 1px solid var(--tui-rule);
+	color: var(--definition-text);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: 1.5;
+	padding: 0;
+	outline: none;
+}
+
+.definition-box__list:focus {
+	border-color: var(--definition-accent);
+}
+
+.definition-box__list option {
+	padding: 0.1em 0.5em;
+}
+
+/* The selected row reads like the navigation menu's cursor rather than a browser highlight. */
+.definition-box__list option:checked {
+	background: var(--tui-selection);
+	color: var(--definition-accent);
+}
+
+.definition-box__form-message {
+	margin: 0.5em 0 0;
+	min-height: 1.5em;      /* reserved, so an error does not shift the list under a tap */
+	color: var(--tui-error);
+	font-size: 0.9em;
+}
+
+/* A translation that failed says so where the translation would have been. */
+.definition-box__translation-text--failed {
+	color: var(--tui-error);
+}
+
 /* Waiting on the server, and having given up waiting on it (D27). */
 .definition-box__loading {
 	margin: 0;
@@ -250,12 +338,14 @@ html.touch-input .definition-box__hints {
 }
 
 /*
- * The `d definition` button: a touch reader's `d` key, shown in the top-right stack under the
- * navigation hint while text is selected (D26). It is unhidden from script and only on a
- * touch device, so it needs no media query of its own — but it must obey `hidden`, which the
- * display below would otherwise beat.
+ * The corner buttons a selection offers: `d definition` for any selection, and `t translate`
+ * beneath it for a selection of more than one word (D26, D32). Both are a touch reader's
+ * equivalent of the key, unhidden from script and only on a touch device, so they need no
+ * media query of their own — but they must obey `hidden`, which the display below would
+ * otherwise beat.
  */
-.definition-affordance {
+.definition-affordance,
+.translate-affordance {
 	display: inline-flex;
 	align-items: center;
 	pointer-events: auto;
@@ -273,16 +363,19 @@ html.touch-input .definition-box__hints {
 	user-select: none;
 }
 
-.definition-affordance[hidden] {
+.definition-affordance[hidden],
+.translate-affordance[hidden] {
 	display: none;
 }
 
-.definition-affordance:active {
+.definition-affordance:active,
+.translate-affordance:active {
 	background-color: var(--tui-selection);
 }
 
 /* The key badge, drawn exactly like the navigation hint's. */
-.definition-affordance__key {
+.definition-affordance__key,
+.translate-affordance__key {
 	border: 1px solid var(--tui-rule);
 	padding: 0 0.4em;
 	margin-right: 0.4em;

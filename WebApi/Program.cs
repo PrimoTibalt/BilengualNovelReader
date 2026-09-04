@@ -57,7 +57,13 @@ namespace NovelReader
 
 			builder.Services.AddAuthorization();
 			builder.Services.AddControllersWithViews();
-			builder.Services.AddSignalR();
+			// A reader can now have two questions in flight at once: pressing `t` on a phrase asks
+			// for the translation and the definition together, and the translation must not wait
+			// for the definition to finish (D32). SignalR serialises invocations per connection by
+			// default — one at a time — so a phrase, whose definition misses Wiktionary and falls
+			// through to the slow second provider (D1), held its translation behind it for seconds.
+			// This does not weaken D17: chapters are serialised by the UserRequestGate, not by this.
+			builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 4);
 
 			var app = builder.Build();
 

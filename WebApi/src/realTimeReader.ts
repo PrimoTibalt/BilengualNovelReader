@@ -11,6 +11,7 @@ import {
   type ConnectionState,
   type NovelSummary,
   type ReadingSessionView,
+  type TranslationLanguageView,
 } from "./reading/connection.js";
 import { parseChapterNumber } from "./reading/chapterNumber.js";
 import { ProgressReporter } from "./reading/progressReporter.js";
@@ -44,6 +45,7 @@ let reachedEnd = false;
 const paragraphsContainer = document.getElementById("novel-paragraphs");
 const connectionStatus = document.getElementById("connection-status");
 const definitionAffordance = document.getElementById("definition-affordance");
+const translateAffordance = document.getElementById("translate-affordance");
 
 // ---- Pieces ----
 
@@ -73,6 +75,15 @@ let pendingSelection: SelectedTerm | undefined;
 /** Re-run once the connection is back, when a chapter load was cut short by losing it (D28). */
 let retryWhenConnected: (() => void) | undefined;
 
+/**
+ * The reader's translation settings, as the server last told us. Null email means they have
+ * never set translation up, which is what makes `t` open the form instead of asking for a
+ * translation nobody can fetch (D31).
+ */
+let translationEmail: string | null = null;
+let translationLanguage: string | null = null;
+let translationLanguages: readonly TranslationLanguageView[] = [];
+
 const definitionMode: KeyMode = {
   name: "definition",
   onEnter: () => scroller.lock(),
@@ -83,6 +94,7 @@ const definitionMode: KeyMode = {
     s: { description: "save word", run: () => definitionBox.save() },
     d: { description: "delete word", run: () => definitionBox.deleteTerm() },
     t: { description: "translate", run: () => definitionBox.translate() },
+    e: { description: "translation settings", run: () => definitionBox.editSettings() },
     Escape: { description: "close", run: () => closeDefinitionBox() },
   }),
 };
@@ -112,6 +124,7 @@ const readingMode: KeyMode = {
     j: { description: "scroll down", run: () => scroller.start("down") },
     k: { description: "scroll up", run: () => scroller.start("up") },
     d: { description: "define selection", run: () => defineSelection() },
+    t: { description: "translate selection", run: () => translateSelection() },
     s: { description: "save selection", run: () => saveSelection() },
     n: { description: "navigation", run: () => openNavigation() },
   }),
@@ -123,7 +136,7 @@ function defineSelection(): void {
   const selected = readSelection();
   if (!selected) return;
 
-  lookUp(selected.text, selected.rect);
+  openBoxFor(selected.text, selected.rect);
 }
 
 /**
@@ -131,16 +144,14 @@ function defineSelection(): void {
  * `loading…` until the answer lands — and says so if none does — so waiting never looks the
  * same as nothing happening (D27).
  */
-function lookUp(term: string, anchor: DOMRect): void {
-  hideDefinitionAffordance();
+function openBoxFor(term: string, anchor: DOMRect): void {
+  hideSelectionAffordances();
 
   definitionBox.open(term, anchor, {
     onSave: (saved) => connection.saveWord(novelName, saved),
     onDelete: (saved) => connection.deleteWord(saved),
-    onTranslate: (saved) => {
-      definitionBox.showTranslationPending();
-      connection.requestTranslation(saved);
-    },
+    onTranslate: (saved) => translateOrConfigure(saved),
+    onEditSettings: () => openTranslationSettings(),
     onClose: () => closeDefinitionBox(),
   });
 
@@ -148,6 +159,88 @@ function lookUp(term: string, anchor: DOMRect): void {
   if (!router.has("definition")) router.push(definitionMode);
 
   connection.requestDefinition(term);
+}
+
+/**
+ * `t` on a selection of more than one word, and the phone's `t translate` button.
+ *
+ * The definition is asked for at the same moment and shown in the same box, but nothing waits
+ * on it: a phrase is selected because the reader wants it translated, and the translation is
+ * rendered the moment it lands, above a definition that is still loading (D32).
+ */
+function translateSelected(selected: SelectedTerm): void {
+  // One word already has `d`, and its translation lives inside that box.
+  if (selected.wordCount < 2) return;
+
+  openBoxFor(selected.text, rectOfRange(selected.range) ?? selected.rect);
+  translateOrConfigure(selected.text);
+}
+
+function translateSelection(): void {
+  const selected = readSelection();
+  if (selected) translateSelected(selected);
+}
+
+/**
+ * `t`. A reader who has not set translation up is asked to, rather than being sent to a
+ * server that can only answer "not configured" (D31) — the server still refuses that case,
+ * but the reader should not need a round trip to be told what to do.
+ */
+function translateOrConfigure(term: string): void {
+  if (translationEmail === null || translationLanguage === null) {
+    openTranslationSettings();
+    return;
+  }
+
+  definitionBox.showTranslationPending();
+  connection.requestTranslation(term);
+}
+
+/** `e`, and the toolbar's settings button. Prefilled when there is something to edit. */
+function openTranslationSettings(): void {
+  if (!definitionBox.isOpen) return;
+
+  definitionBox.openSettings(
+    { email: translationEmail, language: translationLanguage, languages: translationLanguages },
+    {
+      onSubmit: (email, language) => void applyTranslationSettings(email, language),
+      onCancel: () => definitionBox.cancelSettings(),
+    },
+  );
+}
+
+/**
+ * Stores the settings and asks for the translation in the same breath.
+ *
+ * The translation carries the settings with it because the two calls race: the save may not
+ * have landed when the translation is read, and the reader should not have to press `t` twice
+ * on the first word they ever look up (D31). Every later request leaves them out.
+ */
+async function applyTranslationSettings(email: string, language: string): Promise<void> {
+  const asked = definitionBox.surfaceForm;
+
+  definitionBox.cancelSettings();
+  if (asked !== undefined) {
+    definitionBox.showTranslationPending();
+    connection.requestTranslation(asked, { email, language });
+  }
+
+  const result = await connection.saveTranslationSettings(email, language);
+
+  if (result.error !== null) {
+    // The server refused what the page accepted. Put the form back with the reason.
+    openTranslationSettings();
+    definitionBox.showSettingsError(
+      result.error === "email-invalid"
+        ? "The server would not accept that email address."
+        : "The server would not accept that language.",
+      result.error === "email-invalid" ? "email" : "language",
+    );
+    return;
+  }
+
+  translationEmail = result.email;
+  translationLanguage = result.language;
 }
 
 function saveSelection(): void {
@@ -175,11 +268,22 @@ const connection = new ReaderConnection({
 
   onConnectionStateChanged: (state) => showConnectionState(state),
 
-  onTranslation: (term, translation) => {
-    // A late answer for a word the reader has already moved on from is dropped.
-    if (definitionBox.isOpen && definitionBox.term === term) {
-      definitionBox.showTranslation(translation);
+  onTranslation: (surfaceForm, translation) => {
+    // A late answer for something the reader has already moved on from is dropped. Matched on
+    // the surface form, because the definition may not have arrived to name a term yet (D32).
+    if (!definitionBox.isOpen || definitionBox.surfaceForm !== surfaceForm) return;
+
+    // The server is the backstop for settings the page thought were there and were not.
+    if (translation.error === "not-configured") {
+      openTranslationSettings();
+      return;
     }
+
+    definitionBox.showTranslation({
+      text: translation.text,
+      note: translation.note,
+      error: translation.error === null ? null : describeTranslationFailure(translation.error),
+    });
   },
 
   onVocabularyChanged: (term, isSaved) => {
@@ -195,6 +299,18 @@ const connection = new ReaderConnection({
     }
   },
 });
+
+/** Failure codes are the server's; the wording is the page's. */
+function describeTranslationFailure(code: string): string {
+  switch (code) {
+    case "unavailable":
+      return "translation unavailable — the service may be out of allowance for today";
+    case "settings-invalid":
+      return "check your translation settings (e)";
+    default:
+      return "translation failed";
+  }
+}
 
 // ---- Rendering ----
 
@@ -363,7 +479,7 @@ paragraphsContainer?.addEventListener("click", (event) => {
   const term = knownWord.dataset["term"];
   if (!term) return;
 
-  lookUp(term, rectOf(knownWord));
+  openBoxFor(term, rectOf(knownWord));
 });
 
 // ---- Touch input ----
@@ -382,21 +498,27 @@ function selectionInsideColumn(container: HTMLElement): SelectedTerm | undefined
   return readSelection();
 }
 
-function hideDefinitionAffordance(): void {
+function hideSelectionAffordances(): void {
   pendingSelection = undefined;
   if (definitionAffordance) definitionAffordance.hidden = true;
+  if (translateAffordance) translateAffordance.hidden = true;
 }
 
 /**
- * On a touch device there is no `d` key, so a settled selection offers the button instead:
- * `d definition`, under the navigation hint in the top-right corner, tapped when the reader
- * wants the definition rather than the moment they finish selecting (D26).
+ * On a touch device there are no `d` and `t` keys, so a settled selection offers buttons
+ * instead, stacked under the navigation hint in the top-right corner: `d definition` always,
+ * and `t translate` only when more than one word is selected (D26, D32). They are tapped when
+ * the reader wants them, not the moment the selection settles.
  *
- * `selectionchange` fires throughout a drag, so the button waits for it to stop, and appears
+ * `selectionchange` fires throughout a drag, so the buttons wait for it to stop, and appear
  * only for a selection inside the reading column — never one in the menu filter — with no
  * definition box already open.
  */
-function wireTouchDefinitionAffordance(container: HTMLElement, button: HTMLElement): void {
+function wireTouchSelectionAffordances(
+  container: HTMLElement,
+  defineButton: HTMLElement,
+  translateButton: HTMLElement | null,
+): void {
   let settleTimer: number | undefined;
 
   document.addEventListener("selectionchange", () => {
@@ -407,17 +529,28 @@ function wireTouchDefinitionAffordance(container: HTMLElement, button: HTMLEleme
 
       const selected = definitionBox.isOpen ? undefined : selectionInsideColumn(container);
       pendingSelection = selected;
-      button.hidden = selected === undefined;
+      defineButton.hidden = selected === undefined;
+
+      // A single word is already covered by the definition and the `t` inside its box; the
+      // button is for the phrase case, where there is no definition to hang it off.
+      if (translateButton) {
+        translateButton.hidden = selected === undefined || selected.wordCount < 2;
+      }
     }, touchSelectionSettleMs);
   });
 
-  button.addEventListener("click", () => {
+  // Measured at the tap rather than when the button appeared: the page may have been scrolled
+  // in between, and the box has to point at where the words are.
+  defineButton.addEventListener("click", () => {
     const selected = pendingSelection;
     if (!selected) return;
 
-    // Measured now rather than when the button appeared: the page may have been scrolled in
-    // between, and the box has to point at where the words are.
-    lookUp(selected.text, rectOfRange(selected.range) ?? selected.rect);
+    openBoxFor(selected.text, rectOfRange(selected.range) ?? selected.rect);
+  });
+
+  translateButton?.addEventListener("click", () => {
+    const selected = pendingSelection;
+    if (selected) translateSelected(selected);
   });
 }
 
@@ -433,7 +566,7 @@ if (navigationAffordance) {
 }
 
 if (isTouchPrimary && paragraphsContainer && definitionAffordance) {
-  wireTouchDefinitionAffordance(paragraphsContainer, definitionAffordance);
+  wireTouchSelectionAffordances(paragraphsContainer, definitionAffordance, translateAffordance);
 }
 
 // ---- Navigation menu ----
@@ -632,8 +765,8 @@ async function resumeNovel(novel: string): Promise<void> {
 function openNavigation(): void {
   if (!navigationMenu || navigationMenu.isOpen) return;
 
-  // The menu covers the corner both affordances sit in.
-  hideDefinitionAffordance();
+  // The menu covers the corner the affordances sit in.
+  hideSelectionAffordances();
 
   // The mode goes on first so that a menu closed during `open` still pops cleanly.
   if (!router.has("navigation")) router.push(navigationMode);
@@ -648,6 +781,9 @@ function openNavigation(): void {
  * that was cut short with it when the connection returns (D28).
  */
 function showConnectionState(state: ConnectionState): void {
+  // The box says "still looking…" or "connection lost" depending on this (D33).
+  definitionBox.setConnectionUp(state === "connected");
+
   if (connectionStatus) {
     connectionStatus.textContent = state === "connected" ? "" : "reconnecting…";
     connectionStatus.hidden = state === "connected";
@@ -672,6 +808,9 @@ connection
   .then(async () => {
     const session: ReadingSessionView = await connection.getReadingSession();
     novels = session.novels;
+    translationEmail = session.translationEmail;
+    translationLanguage = session.translationLanguage;
+    translationLanguages = session.translationLanguages;
 
     await openNovelAt(session.novelName, session.chapterNumber, session.paragraphNumber, session.resuming);
   })

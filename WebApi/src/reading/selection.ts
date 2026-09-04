@@ -13,6 +13,11 @@ export interface SelectedTerm {
    * selection because something else was tapped (D26).
    */
   readonly range: Range;
+  /**
+   * How many words were selected. Translation is offered only for more than one: a single
+   * word already has a definition, and its translation sits inside that box (D32).
+   */
+  readonly wordCount: number;
 }
 
 /** Longest phrase worth looking up; matches the server's phrase cap (D4). */
@@ -24,13 +29,15 @@ export function readSelection(): SelectedTerm | undefined {
 
   const text = selection.toString().trim().replace(/\s+/g, " ");
   if (text.length === 0) return undefined;
-  if (text.split(" ").length > maxWords) return undefined;
+
+  const wordCount = text.split(" ").length;
+  if (wordCount > maxWords) return undefined;
 
   const range = selection.getRangeAt(0);
   const rect = range.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return undefined;
 
-  return { text, rect, range: range.cloneRange() };
+  return { text, rect, range: range.cloneRange(), wordCount };
 }
 
 /**

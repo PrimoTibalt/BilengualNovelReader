@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NovelReader.Domain.RealTimeReader.Accounts;
+using NovelReader.Domain.RealTimeReader.Translation;
 
 namespace NovelReader.Data.Sqlite
 {
@@ -17,7 +18,12 @@ namespace NovelReader.Data.Sqlite
 
 			SqliteUserAccountRepository.EnsureCreated(connectionString);
 
-			services.AddSingleton<IUserAccountRepository>(_ => new SqliteUserAccountRepository(connectionString));
+			// One instance behind two interfaces: accounts and translation settings are the same
+			// row, and splitting them into two connections to the same file buys nothing.
+			SqliteUserAccountRepository repository = new(connectionString);
+
+			services.AddSingleton<IUserAccountRepository>(repository);
+			services.AddSingleton<ITranslationSettingsStore>(repository);
 			services.AddSingleton<AccountService>();
 		}
 	}

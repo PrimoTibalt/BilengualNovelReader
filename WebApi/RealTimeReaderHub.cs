@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Reading;
+using NovelReader.Domain.RealTimeReader.Translation;
 using NovelReader.Domain.RealTimeReader.User;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
 
@@ -24,6 +25,8 @@ namespace NovelReader
 		DefinitionLookupService definitionLookupService,
 		IVocabularyRepository vocabularyRepository,
 		IPreparedChapterCache preparedChapterCache,
+		TranslationService translationService,
+		ITranslationSettingsStore translationSettings,
 		ILogger<RealTimeReaderHub> logger) : Hub
 	{
 		/// <summary>Where a reader with no history starts.</summary>
@@ -45,6 +48,7 @@ namespace NovelReader
 			// Returns what is stored and refreshes anything stale in the background (D22).
 			IReadOnlyList<NovelSummary> novels = await novelLibraryService.GetLibraryAsync(userName, Context.ConnectionAborted);
 			ReadingProgress? mostRecent = await readingProgressStore.GetMostRecentAsync(userName, Context.ConnectionAborted);
+			TranslationSettings? settings = await translationSettings.GetAsync(userName, Context.ConnectionAborted);
 
 			return new ReadingSessionResponse(
 				userName,
@@ -52,7 +56,10 @@ namespace NovelReader
 				mostRecent?.NovelName ?? DefaultNovelName,
 				mostRecent?.ChapterNumber ?? DefaultChapterNumber,
 				mostRecent?.ParagraphNumber ?? 1,
-				mostRecent is not null);
+				mostRecent is not null,
+				settings?.Email,
+				settings?.TargetLanguage,
+				[.. TranslationLanguages.All.Select(language => new TranslationLanguageResponse(language.Code, language.Name))]);
 		}
 
 		/// <summary>
@@ -110,13 +117,21 @@ namespace NovelReader
 				? null
 				: await readingProgressStore.GetAsync(userName, novelName, Context.ConnectionAborted);
 
+			// Carried here too, cheaply, rather than sent as nulls: this shares a shape with the
+			// opening session, and a response whose fields mean "unset" when they mean "not
+			// looked up" is the kind of thing that is read wrongly later.
+			TranslationSettings? settings = await translationSettings.GetAsync(userName, Context.ConnectionAborted);
+
 			return new ReadingSessionResponse(
 				userName,
 				[],
 				novelName,
 				progress?.ChapterNumber ?? DefaultChapterNumber,
 				progress?.ParagraphNumber ?? 1,
-				progress is not null);
+				progress is not null,
+				settings?.Email,
+				settings?.TargetLanguage,
+				[.. TranslationLanguages.All.Select(language => new TranslationLanguageResponse(language.Code, language.Name))]);
 		}
 
 		/// <summary>
@@ -220,11 +235,14 @@ namespace NovelReader
 		}
 
 		/// <summary>
-		/// Answers the reading page's <c>t</c> key with a hard-coded translation. The language
-		/// pair and the choice of word-vs-sentence are still open (D10), so this returns a
-		/// clearly-labelled stub rather than guessing.
+		/// Translates a selection into the reader's chosen language (D31).
+		///
+		/// <paramref name="email"/> and <paramref name="language"/> are normally null and the
+		/// reader's stored settings are used. They are accepted because the first translation a
+		/// reader ever asks for is sent at the same moment as the save that stores those
+		/// settings: without carrying them, that one request would race the write and lose.
 		/// </summary>
-		public async Task Translate(string surfaceForm)
+		public async Task Translate(string surfaceForm, string? email = null, string? language = null)
 		{
 			string userName = CallerName;
 
@@ -234,9 +252,63 @@ namespace NovelReader
 				return;
 			}
 
-			logger.LogDebug("Translation requested by {User} for {Term}; answering with the stub", userName, normalizedTerm);
+			TranslationOutcome outcome;
+			try
+			{
+				outcome = await translationService.TranslateAsync(
+					userName, normalizedTerm, email, language, Context.ConnectionAborted);
+			}
+			catch (Exception exception)
+			{
+				// A translation provider having a bad day is not a reason to break the session.
+				logger.LogWarning(exception, "Translation failed for {Term}", normalizedTerm);
+				outcome = TranslationOutcome.Failed(TranslationFailure.Unavailable);
+			}
 
-			await Clients.Caller.SendAsync("ReturnTranslation", TranslationResponse.Stub(normalizedTerm));
+			TranslationResponse response = outcome.Failure switch
+			{
+				TranslationFailure.None => new TranslationResponse(
+					normalizedTerm,
+					surfaceForm,
+					outcome.Translation!.Text,
+					outcome.Translation.TargetLanguage,
+					Error: null),
+				TranslationFailure.NotConfigured =>
+					TranslationResponse.Failed(normalizedTerm, surfaceForm, TranslationResponse.NotConfigured),
+				TranslationFailure.SettingsInvalid =>
+					TranslationResponse.Failed(normalizedTerm, surfaceForm, TranslationResponse.SettingsInvalid),
+				_ => TranslationResponse.Failed(normalizedTerm, surfaceForm, TranslationResponse.Unavailable)
+			};
+
+			await Clients.Caller.SendAsync("ReturnTranslation", response);
+		}
+
+		/// <summary>
+		/// Stores the reader's translation settings. The page checks both fields before it gets
+		/// here, but the page is not the thing that decides — a client that skipped its own
+		/// checks is held to the same rules (D31).
+		/// </summary>
+		public async Task<TranslationSettingsResponse> SaveTranslationSettings(string email, string language)
+		{
+			string userName = CallerName;
+
+			SettingsFailure failure = TranslationSettingsValidator.Validate(email, language);
+			if (failure != SettingsFailure.None)
+			{
+				return new TranslationSettingsResponse(
+					Email: null,
+					Language: null,
+					failure == SettingsFailure.EmailInvalid
+						? TranslationSettingsResponse.EmailInvalid
+						: TranslationSettingsResponse.LanguageInvalid);
+			}
+
+			TranslationSettings settings = TranslationSettingsValidator.Normalize(email, language);
+			await translationSettings.SaveAsync(userName, settings, Context.ConnectionAborted);
+
+			logger.LogInformation("Translation settings stored for {User} ({Language})", userName, settings.TargetLanguage);
+
+			return new TranslationSettingsResponse(settings.Email, settings.TargetLanguage, Error: null);
 		}
 
 		public async Task SaveWord(string novelName, string surfaceForm)

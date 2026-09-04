@@ -29,9 +29,31 @@ interface DefinitionWire {
 
 interface TranslationWire {
   readonly term: string;
-  readonly text: string;
+  /** What was selected, echoed back — this is what an answer is matched against (D32). */
+  readonly surfaceForm: string;
+  readonly text: string | null;
   readonly targetLanguage: string | null;
-  readonly isStub: boolean;
+  /** A code, not a sentence: `not-configured` opens the settings form (D31). */
+  readonly error: string | null;
+}
+
+interface TranslationSettingsWire {
+  readonly email: string | null;
+  readonly language: string | null;
+  readonly error: string | null;
+}
+
+/** One language the settings form offers, as the server defines it. */
+export interface TranslationLanguageView {
+  readonly code: string;
+  readonly name: string;
+}
+
+/** The answer to a settings save: stored, or refused with the field that was wrong. */
+export interface TranslationSettingsResult {
+  readonly email: string | null;
+  readonly language: string | null;
+  readonly error: string | null;
 }
 
 interface VocabularyChangedWire {
@@ -88,6 +110,10 @@ export interface ReadingSessionView {
   readonly chapterNumber: number;
   readonly paragraphNumber: number;
   readonly resuming: boolean;
+  /** Both null until the reader has set translation up; that is what makes `t` ask first. */
+  readonly translationEmail: string | null;
+  readonly translationLanguage: string | null;
+  readonly translationLanguages: readonly TranslationLanguageView[];
 }
 
 /**
@@ -98,7 +124,8 @@ export type ConnectionState = "connected" | "reconnecting";
 
 export interface ReaderConnectionCallbacks {
   onDefinition(view: DefinitionView): void;
-  onTranslation(term: string, translation: TranslationView): void;
+  /** Keyed by the surface form that was asked for, not the term it normalised to (D32). */
+  onTranslation(surfaceForm: string, translation: TranslationView): void;
   onVocabularyChanged(term: string, isSaved: boolean): void;
   onConnectionStateChanged(state: ConnectionState): void;
 }
@@ -172,13 +199,11 @@ export class ReaderConnection {
     });
 
     this.#connection.on("ReturnTranslation", (payload: TranslationWire) => {
-      // The stub answer is labelled as such, so a placeholder can never read as a real
-      // translation (D10).
-      const note = payload.isStub
-        ? "placeholder — no translation provider configured"
-        : payload.targetLanguage;
-
-      callbacks.onTranslation(payload.term, { text: payload.text, note });
+      callbacks.onTranslation(payload.surfaceForm, {
+        text: payload.text,
+        note: payload.targetLanguage,
+        error: payload.error,
+      });
     });
 
     this.#connection.on("ReturnVocabularyChanged", (payload: VocabularyChangedWire) => {
@@ -248,8 +273,23 @@ export class ReaderConnection {
     void this.#send("DeleteWord", surfaceForm);
   }
 
-  requestTranslation(surfaceForm: string): void {
-    void this.#send("Translate", surfaceForm);
+  /**
+   * Asks for a translation. `settings` is passed only on the very first one a reader ever
+   * requests, which is sent alongside the save that stores them — every later call leaves it
+   * out and the server uses what it stored (D31).
+   */
+  requestTranslation(surfaceForm: string, settings?: { email: string; language: string }): void {
+    void this.#send("Translate", surfaceForm, settings?.email ?? null, settings?.language ?? null);
+  }
+
+  /** Stores the reader's translation settings. Answers with the field to fix, or nothing. */
+  async saveTranslationSettings(email: string, language: string): Promise<TranslationSettingsResult> {
+    try {
+      return await this.#call<TranslationSettingsWire>("SaveTranslationSettings", email, language);
+    } catch (error: unknown) {
+      console.error("Could not save translation settings:", error);
+      return { email: null, language: null, error: "unavailable" };
+    }
   }
 
   /**

@@ -39,5 +39,16 @@ namespace NovelReader
 		string NovelName,
 		int ChapterNumber,
 		int ParagraphNumber,
-		bool Resuming);
+		bool Resuming,
+		/// <summary>
+		/// The reader's translation settings, both null until they have set them up — which is
+		/// how the page knows that `t` should ask rather than translate (D31).
+		/// </summary>
+		string? TranslationEmail,
+		string? TranslationLanguage,
+		/// <summary>
+		/// The languages the form offers. Sent with the session rather than fetched when the
+		/// form opens: it is under a kilobyte, and it means the form has nothing to wait for.
+		/// </summary>
+		IReadOnlyList<TranslationLanguageResponse> TranslationLanguages);
 }
