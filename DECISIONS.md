@@ -1149,3 +1149,50 @@ connection actually down                 connection lost, rgb(196,106,106), chip
 answer from a dead connection — but the two now read differently, and only one of them is
 alarming. The wording is deliberately plain rather than reassuring: `still looking…` says the
 thing is still happening, which is what a reader wants to know.
+
+---
+
+## D34 — Nothing in the reading column may be wider than the column
+
+**Status:** Adopted · 2026-09-05
+
+**Context.** Chapter 211 of Reverend Insanity broke the page on a phone. Three of its 162
+paragraphs are a scene separator: **109 hyphens and nothing else**. Measured on the device,
+that paragraph rendered **1461px** wide — and Gecko answers content that will not fit by
+growing the *layout viewport* to hold it:
+
+| on chapter 211, phone | before | after |
+|---|---|---|
+| widest separator paragraph | 1461px | **355px** |
+| `innerWidth` (layout viewport) | **1472** | 378 |
+| `documentElement.clientWidth` | 378 | 378 |
+| horizontal overflow | **1094px** | **0** |
+| `.reader-affordances` computed `right` | 1105.93px | **12px** |
+
+**D29 was doing its job, and it was not enough.** Its formula kept the corner buttons correctly
+placed *in layout coordinates* the whole time — measured at `right: 366` on a 378px screen,
+having absorbed 1094px. But `position: fixed` is fixed to the **layout viewport**, and once that
+viewport is 1472px wide against a 378px window the page can be panned sideways: the window
+slides over the buttons and they leave the screen. No amount of anchoring fixes a page that can
+be panned. The overflow itself had to go.
+
+**Decision.** `overflow-wrap: anywhere` on the reading column's paragraphs.
+
+**`anywhere`, not `break-word`.** Both break a long run during layout, but only `anywhere` also
+shrinks the paragraph's **min-content width** — and it is the min-content width that the viewport
+is grown to accommodate. `break-word` would have wrapped the dashes and still left a 1472px
+viewport.
+
+**And a separator is drawn as one.** A paragraph made only of separator characters is a scene
+break, not prose; wrapped it would be three lines of dashes. The page recognises it and draws a
+short centred rule instead. This is client-side, so it needs no re-scrape and applies to every
+novel already cached.
+
+**Consequences.**
+- General, not specific to this chapter: any unbreakable run — a URL, a table of underscores —
+  now wraps instead of taking the layout viewport with it.
+- D29's compensation now sits idle at `12px` during ordinary reading. It stays: the caret
+  overflow it was written for is anonymous content in the canvas, not an element, and cannot be
+  wrapped by this or clipped by anything.
+- The separator's own characters are hidden (`font-size: 0`), so the paragraph keeps its
+  `data-chapter`/`data-paragraph` attributes and the bookmark still counts it (D19).

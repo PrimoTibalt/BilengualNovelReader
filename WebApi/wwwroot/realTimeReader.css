@@ -23,6 +23,39 @@ body {
 	font-family: 'Libre Calson Regular';
 }
 
+/*
+ * No run of characters may be wider than the column. Chapters separate scenes with a line of
+ * dashes — chapter 211 of Reverend Insanity uses 109 of them, which renders 1461px wide — and
+ * Gecko answers content that will not fit by growing the *layout viewport* to hold it: measured
+ * at 1472px against a 378px screen. Everything anchored to that viewport then sits over a page
+ * the reader can pan sideways, which is how the corner buttons ended up off screen (D34).
+ *
+ * `anywhere` rather than `break-word`: only `anywhere` also shrinks the paragraph's min-content
+ * width, and it is the min-content width that blows the viewport out in the first place.
+ */
+#novel-paragraphs p {
+	overflow-wrap: anywhere;
+}
+
+/*
+ * A paragraph that is nothing but separator characters is a scene break, not prose. Wrapped it
+ * would be three lines of dashes; drawn as a short rule it is what the author meant.
+ */
+.scene-break {
+	font-size: 0;          /* the dashes themselves are not worth reading */
+	text-align: center;
+	margin: 1.4em 0;
+}
+
+.scene-break::after {
+	content: "";
+	display: inline-block;
+	width: 96px;
+	max-width: 40%;
+	border-top: 1px solid #4a4a4a;
+	vertical-align: middle;
+}
+
 .data-chapter-title {
 	text-align: center;
 	font-weight: bolder;

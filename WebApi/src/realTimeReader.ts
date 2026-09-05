@@ -319,6 +319,12 @@ function isChapterTitle(paragraphNumber: number): boolean {
   return paragraphNumber === 1;
 }
 
+/**
+ * A paragraph made only of separator characters — the source site marks a scene change with a
+ * long run of dashes. Recognised so it can be drawn as a rule rather than read as text (D34).
+ */
+const sceneBreakPattern = /^[-–—_=~*·•\s]{4,}$/;
+
 function appendChapter(chapter: ChapterView): void {
   if (!paragraphsContainer) return;
 
@@ -335,6 +341,11 @@ function appendChapter(chapter: ChapterView): void {
     // The server escapes every scraped character and emits only its own tags (D3), so this
     // is markup the server authored, not text the novel site controls.
     element.innerHTML = paragraph.markup;
+
+    if (sceneBreakPattern.test(element.textContent ?? "")) {
+      element.classList.add("scene-break");
+    }
+
     paragraphsContainer.appendChild(element);
   }
 }

@@ -158,6 +158,10 @@ Three things to keep in mind when editing:
   frame against a timer, because `requestAnimationFrame` never fires in a background tab and
   waiting on it alone wedges the open (D23).
 
+- **Nothing in the reading column may be wider than the column.** Paragraphs carry
+  `overflow-wrap: anywhere` — a chapter whose scene separator is 109 hyphens grew the phone's
+  *layout viewport* to 1472px and let the page pan sideways, taking the fixed corner buttons
+  off screen (D34). A paragraph that is only separator characters is drawn as a scene break.
 - **The emitted `.js` and `.js.map` under `wwwroot/` are build output and are gitignored.** Edit the `.ts` in `src/`, never the generated file — a `dotnet build` overwrites it.
 - **The SignalR client is a global, not a module.** It is loaded by a classic `<script>` tag from the libman-restored `lib/`, so `realTimeReader.ts` types it with `import type * as SignalR` plus `declare const signalR`. That import is erased at compile time; adding a value import of `@microsoft/signalr` would emit a bare specifier the browser cannot resolve without a bundler.
 
