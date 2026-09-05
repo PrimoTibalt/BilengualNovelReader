@@ -824,6 +824,12 @@ connection
     translationLanguages = session.translationLanguages;
 
     await openNovelAt(session.novelName, session.chapterNumber, session.paragraphNumber, session.resuming);
+    window.addEventListener("orientationchange", () => {
+      const position = progressReporter?.currentPosition()
+      if (position) {
+        setTimeout(() => scrollParagraphToBottom(position.chapterNumber, position.paragraphNumber), 200)
+      }
+    }, false)
   })
   .catch((error: unknown) => {
     // `start` waits out an unreachable server rather than failing, so reaching here means the
