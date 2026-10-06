@@ -14,7 +14,7 @@ namespace NovelReader
 		{
 			var builder = WebApplication.CreateBuilder(args);
 
-			builder.Services.RegisterHttpClientAndRetriever();
+			builder.Services.RegisterHttpClientAndRetriever(builder.Configuration);
 			builder.Services.RegisterDictionaryProviders();
 			builder.Services.AddMongoClient(builder.Configuration);
 			builder.Services.RegisterMongoImplementations();

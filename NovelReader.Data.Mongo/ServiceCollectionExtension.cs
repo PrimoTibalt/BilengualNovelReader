@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -14,7 +15,15 @@ namespace NovelReader.Data.Mongo
 	{
 		public static void AddMongoClient(this IServiceCollection services, IConfiguration configuration)
 		{
-			var settings = MongoClientSettings.FromConnectionString(configuration.GetConnectionString("DefaultConnectionString"));
+			MongoClientSettings? settings = MongoClientSettings.FromConnectionString(configuration.GetConnectionString("DefaultConnectionString"));
+      string certificatePath = configuration["X509Certificate"] ?? throw new ArgumentException();
+      string certificatePass = configuration["X509CertificatePass"] ?? throw new ArgumentException();
+
+      X509Certificate2 certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, certificatePass);
+      settings.SslSettings = new() {
+        ClientCertificates = [certificate]
+      };
+      settings.UseTls = true;
 			MongoClient client = new(settings);
 			try
 			{
@@ -31,7 +40,7 @@ namespace NovelReader.Data.Mongo
 			}
 			catch (Exception ex) { Console.WriteLine($"Could not ensure vocabulary indexes: {ex.Message}"); }
 
-			services.AddSingleton<MongoClient>(client);
+			services.AddSingleton(client);
 		}
 
 		public static void RegisterMongoImplementations(this IServiceCollection services)
