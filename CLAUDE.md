@@ -186,6 +186,17 @@ Three things to keep in mind when editing:
 - **The emitted `.js` and `.js.map` under `wwwroot/` are build output and are gitignored.** Edit the `.ts` in `src/`, never the generated file — a `dotnet build` overwrites it.
 - **The SignalR client is a global, not a module.** It is loaded by a classic `<script>` tag from the libman-restored `lib/`, so `realTimeReader.ts` types it with `import type * as SignalR` plus `declare const signalR`. That import is erased at compile time; adding a value import of `@microsoft/signalr` would emit a bare specifier the browser cannot resolve without a bundler.
 
+### Saved words match in all their forms (D39)
+
+`VocabularyEntry.BaseForm` comes from the dictionary at save time (`WordForms.BaseFromDictionary`):
+an inflection note in the main sense, or below a non-noun main sense. Null when no dictionary
+had an entry, in which case `WordForms.CandidateBasesOf` supplies every rule-valid base at match
+time. `VocabularyForms` opens the vocabulary out into *form → saved term*, which is what
+`ParagraphMarkupBuilder` matches against and what `ReturnVocabularyChanged` sends the page as
+`forms`. **Changing what a paragraph marks up to means bumping `ParagraphMarkupBuilder.Version`**,
+or the durable prepared-chapter cache keeps serving the old markup. Entries saved before D39 are
+backfilled by `VocabularyBaseForms`, once per reader per process.
+
 ### Prototype seams to be aware of
 
 The reader, the novel and the position all come from the server now; nothing about identity is

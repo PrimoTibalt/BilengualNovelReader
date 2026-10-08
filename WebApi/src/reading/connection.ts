@@ -77,8 +77,11 @@ export interface AssistantSettingsView {
 }
 
 interface VocabularyChangedWire {
+  /** The word as saved. */
   readonly term: string;
   readonly isSaved: boolean;
+  /** Every form it is matched in — `run`, `runs`, `ran`, `running` … (D39). */
+  readonly forms: readonly string[];
 }
 
 export interface ParagraphView {
@@ -147,7 +150,7 @@ export interface ReaderConnectionCallbacks {
   onDefinition(view: DefinitionView): void;
   /** Keyed by the surface form that was asked for, not the term it normalised to (D32). */
   onTranslation(surfaceForm: string, translation: TranslationView): void;
-  onVocabularyChanged(term: string, isSaved: boolean): void;
+  onVocabularyChanged(term: string, isSaved: boolean, forms: readonly string[]): void;
   onConnectionStateChanged(state: ConnectionState): void;
 }
 
@@ -232,7 +235,7 @@ export class ReaderConnection {
     });
 
     this.#connection.on("ReturnVocabularyChanged", (payload: VocabularyChangedWire) => {
-      callbacks.onVocabularyChanged(payload.term, payload.isSaved);
+      callbacks.onVocabularyChanged(payload.term, payload.isSaved, payload.forms ?? [payload.term]);
     });
   }
 

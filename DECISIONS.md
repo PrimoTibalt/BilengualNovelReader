@@ -92,6 +92,7 @@ wrapped. Matching walks tokens and prefers the longest run, so a saved phrase li
 **Provisional because.** This does not do stemming — saving `run` will not underline `running`.
 Proper lemmatisation needs a dictionary or a library, which conflicts with the
 minimal-dependency preference. Flagged as an open question rather than silently assumed.
+**Answered by D39**, which matches a saved word in all its forms without a library.
 
 ---
 
@@ -1390,3 +1391,76 @@ taller heading pushes the chapter down as well. Reset clears both.
 **Verified** on desktop: default 58 / 29px (title / text); text at 120% → 58 / 35; title at
 70% → 40 / 35; reset → 58 / 29 and storage cleared. On the phone, the slider shows up as a
 second row and the keyboard grid (D36) gives it h/l with no extra code.
+
+---
+
+## D39 — A saved word is matched in all its forms
+
+**Status:** Adopted · 2026-10-09
+
+**Context.** D4 matched a saved word exactly, so a saved `sneered` underlined only `sneered`,
+never `sneer`, `sneers` or `sneering`. That was left as an open question because proper
+lemmatisation seemed to need a library.
+
+**Decision: generate forward from a base form; don't stem.** Each saved word gets a **base
+form**. Every form of that base is generated (`sneer` → `sneers, sneered, sneering`), and each
+form maps back to the word as saved. The underline on `running` therefore carries `run` and
+opens the word the reader actually kept. A stemmer was rejected because it cuts unrelated
+words to one stem (`general`/`generous` → `gener`, `university`/`universe` → `univers`) and
+underlines words nobody saved, and it cannot get from `ran` to `run`.
+
+**Where the base form comes from.**
+1. **The dictionary, at save time.** The definition is usually cached, since the reader has
+   just looked the word up. Wiktionary names the base: `sneered` is "simple past and past
+   participle of sneer". How much the entry is trusted depends on its *main* sense (the first
+   that is not a symbol or abbreviation; `ran` is first "ISO 639-3 language code for Riantana"):
+   - an inflection note **in** the main sense is the answer (`sneered` → `sneer`,
+     `tables` → `table`);
+   - a main sense that is a **noun** makes the word a base in its own right, and a note
+     further down is ignored. `evening` is a time of day first and "present participle of
+     even" only later; taking that would underline every "even";
+   - any other main sense (an adjective, say) carries the verb's meaning, so a note further
+     down is taken (`sneering` → `sneer`, `interesting` → `interest`).
+
+   A named base is used only if it really generates the saved word.
+2. **The suffix rules, when no dictionary has an entry at all.** Without a lexicon there is no
+   single answer (`debated` is `debat`+ed or `debate`+d), so *every* candidate whose own forms
+   include the word is kept, and the word matches in the forms of all of them. The wrong
+   candidates are not words, so their forms never occur in text. Generating forward is what
+   tells `hoping` (`hope`) from `hopping` (`hop`): a one-syllable base doubles its last
+   consonant, so `hop` gives `hopping` and never `hoping`.
+
+**The forms.** Regular `-s`/`-es`/`-ies`, `-ed`/`-d`/`-ied`, `-ing` (with the e dropped, the
+consonant doubled, `ie`→`ying`, `c`→`ck`), and `-f`/`-fe` → `-ves`. A table of about 150
+irregular verbs (`run`/`ran`) and a few irregular plurals (`child`/`children`). For a phrase,
+the first word is inflected (`give up` → `gave up`, `giving up`). Two kinds of form are left out
+on purpose:
+- regular `-ed` for irregular verbs, which made `be` → `bed` and `see` → `seed`;
+- `-er`/`-est` except for `-y` adjectives (`happier`), because plain comparatives land on
+  unrelated words: `corn`/`corner`, `show`/`shower`, `flow`/`flower`, `for`/`forest`. So
+  `darker` does not match `dark`.
+
+**Keeping it consistent.**
+- The base form is stored on the vocabulary entry (`base` in Mongo).
+- Words saved before this get theirs from the dictionary in a background backfill, once per
+  reader per process, started when the page opens.
+- After a save, the page receives every form, so text already on screen is underlined
+  exactly as the server will mark up the next chapter.
+- Deleting by any form removes the saved word.
+- `ParagraphMarkupBuilder.Version` (now 2) is stored with each durable prepared chapter, and a
+  mismatch is a miss, so chapters marked up under exact matching are prepared again.
+
+**Verified** against live Wiktionary entries in the local app. `sneering`, `stopped`, `tables`,
+`ran`, `hoping` and `interesting` got `sneer`, `stop`, `table`, `run`, `hope` and `interest`;
+`evening`, `morning` and `building` kept themselves. On the page, saved `ran` underlined
+`running`, saved `hoping` underlined `hoped`, and saved `evening` left `even` alone. The server
+markup after a reload matched the live underlines.
+
+**Consequences and known gaps.**
+- No Domain dependency; adding an irregular verb is one line in `WordForms`.
+- `-er`/`-est` comparatives other than `-y` adjectives, and irregular words missing from the
+  table, still match only as saved.
+- **A dictionary outage is cached as "no such word" (D2), and that sends a word to the suffix
+  rules for good.** During testing a timeout did exactly that to `evening`, which then matched
+  `even`. The cure belongs in the definition cache: tell a provider that failed apart from one
+  that answered "not found". That is not done yet.

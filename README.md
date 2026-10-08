@@ -27,8 +27,9 @@ you return.
 - **Lets you set the page up.** The settings drawer (`c`, or the `>` button in the top-left
   corner on a phone) has a font-size slider, a separate chapter-title size slider, and hex fields for the background and text colours. They are
   kept per device and applied before the page first paints. One button resets them all.
-- **Remembers your vocabulary.** Saved words are underlined in every chapter, and clicking one
-  reopens its definition.
+- **Remembers your vocabulary.** Saved words are underlined in every chapter, in all their
+  forms: save `sneered` and `sneer`, `sneers` and `sneering` are underlined too, as is `ran`
+  for a saved `run`. Clicking one reopens the word you saved.
 - **Keeps the page short.** At most four chapters are on the page at once: the one you are
   reading, two above it and the next one below. Older chapters are removed as you read on.
 - **Holds your place when the screen changes.** Turning the phone, even while it is off, and

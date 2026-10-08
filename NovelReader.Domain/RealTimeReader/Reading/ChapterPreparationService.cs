@@ -21,7 +21,7 @@ namespace NovelReader.Domain.RealTimeReader.Reading
         )
         {
             IChapter rawChapter = await GetOrCreateChapterAsync(novelName, chapterNumber);
-            IReadOnlySet<string> knownTerms = await GetKnownTermsAsync(userName, cancellationToken);
+            IReadOnlyDictionary<string, string> knownTerms = await GetKnownTermsAsync(userName, cancellationToken);
 
             Dictionary<int, string> markedUpParagraphs = [];
             foreach ((string key, object value) in rawChapter.Paragraphs)
@@ -47,7 +47,8 @@ namespace NovelReader.Domain.RealTimeReader.Reading
             };
         }
 
-        public async Task<IReadOnlySet<string>> GetKnownTermsAsync(
+        /// <summary>Every form of every saved word, mapped to the word as saved (D39).</summary>
+        public async Task<IReadOnlyDictionary<string, string>> GetKnownTermsAsync(
             string userName,
             CancellationToken cancellationToken = default
         )
@@ -55,16 +56,7 @@ namespace NovelReader.Domain.RealTimeReader.Reading
             IReadOnlyCollection<VocabularyEntry> entries =
                 await vocabularyRepository.GetAllForUserAsync(userName, cancellationToken);
 
-            HashSet<string> knownTerms = new(entries.Count);
-            foreach (VocabularyEntry entry in entries)
-            {
-                if (entry.NormalizedTerm.Length > 0)
-                {
-                    knownTerms.Add(entry.NormalizedTerm);
-                }
-            }
-
-            return knownTerms;
+            return new VocabularyForms(entries).SavedTermByForm;
         }
 
         private async Task<IChapter> GetOrCreateChapterAsync(string novelName, int chapterNumber)

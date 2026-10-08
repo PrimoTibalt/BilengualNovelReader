@@ -8,6 +8,13 @@ namespace NovelReader.Domain.RealTimeReader.Vocabulary
 		/// <summary>Lookup key, produced by <see cref="TermNormalizer"/>.</summary>
 		public required string NormalizedTerm { get; init; }
 
+		/// <summary>
+		/// The word's base form, worked out when it was saved — `sneer` for `sneered` — which
+		/// every form it is matched in is generated from (D39). Null for words saved before
+		/// that, which get the suffix rules' answer whenever they are read.
+		/// </summary>
+		public string? BaseForm { get; init; }
+
 		/// <summary>The form the reader actually selected, kept for display.</summary>
 		public required string SurfaceForm { get; init; }
 

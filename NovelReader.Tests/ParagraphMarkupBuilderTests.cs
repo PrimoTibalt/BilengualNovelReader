@@ -4,7 +4,9 @@ namespace NovelReader.Tests
 {
 	public class ParagraphMarkupBuilderTests
 	{
-		private static IReadOnlySet<string> Known(params string[] terms) => new HashSet<string>(terms);
+		/// <summary>Saved words matched only as themselves, as before D39.</summary>
+		private static IReadOnlyDictionary<string, string> Known(params string[] terms) =>
+			terms.ToDictionary(term => term, term => term);
 
 		// ---- Escaping: paragraph text is scraped and untrusted (D3). ----
 

@@ -67,7 +67,8 @@ namespace NovelReader.Data.Mongo
 				{ "novel", chapter.NovelName },
 				{ "chapter", chapter.ChapterNumber },
 				{ "paragraphs", paragraphs },
-				{ "preparedAt", chapter.PreparedAtUtc }
+				{ "preparedAt", chapter.PreparedAtUtc },
+				{ "markupVersion", ParagraphMarkupBuilder.Version }
 			};
 
 			FilterDefinitionBuilder<BsonDocument> builder = new();
@@ -128,6 +129,16 @@ namespace NovelReader.Data.Mongo
 
 		private static PreparedChapter? ToPreparedChapter(BsonDocument document)
 		{
+			// Prepared under other markup rules: the reader would get yesterday's underlines.
+			// Treated as a miss, so it is prepared again — the memory tier needs no such check,
+			// because it does not outlive the process that wrote it.
+			if (!document.TryGetValue("markupVersion", out BsonValue version)
+				|| !version.IsInt32
+				|| version.AsInt32 != ParagraphMarkupBuilder.Version)
+			{
+				return null;
+			}
+
 			if (!document.TryGetValue("paragraphs", out BsonValue paragraphsValue) || !paragraphsValue.IsBsonDocument)
 			{
 				return null;

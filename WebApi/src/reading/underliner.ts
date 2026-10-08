@@ -13,10 +13,18 @@ function escapeForRegExp(term: string): string {
   return term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildMatcher(normalizedTerm: string): RegExp {
-  // Whitespace in a saved phrase may be any run of whitespace in the text.
-  const pattern = escapeForRegExp(normalizedTerm).replace(/\\?\s+/g, "\\s+");
-  return new RegExp(`\\b${pattern}\\b`, "gi");
+/**
+ * One expression for every form of the word, longest first, so `giving up` is taken whole
+ * rather than as `giving` followed by ` up`.
+ */
+function buildMatcher(forms: readonly string[]): RegExp {
+  const alternatives = [...new Set(forms)]
+    .filter((form) => form.length > 0)
+    .sort((left, right) => right.length - left.length)
+    // Whitespace in a saved phrase may be any run of whitespace in the text.
+    .map((form) => escapeForRegExp(form).replace(/\\?\s+/g, "\\s+"));
+
+  return new RegExp(`\\b(?:${alternatives.join("|")})\\b`, "giu");
 }
 
 /** Text nodes under `root` that are not already inside a marked word. */
@@ -42,11 +50,14 @@ function collectTextNodes(root: HTMLElement): Text[] {
   return nodes;
 }
 
-/** Wraps every occurrence of a newly saved term in the text already on screen. */
-export function underlineTerm(root: HTMLElement, normalizedTerm: string): void {
+/**
+ * Wraps every occurrence of a newly saved word, in any of its `forms`, in the text already on
+ * screen (D39). Each wrap carries the word as saved, as the server's markup does.
+ */
+export function underlineTerm(root: HTMLElement, normalizedTerm: string, forms: readonly string[]): void {
   if (normalizedTerm.length === 0) return;
 
-  const matcher = buildMatcher(normalizedTerm);
+  const matcher = buildMatcher(forms.length > 0 ? forms : [normalizedTerm]);
 
   for (const textNode of collectTextNodes(root)) {
     const text = textNode.textContent ?? "";

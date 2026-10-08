@@ -348,14 +348,16 @@ const connection = new ReaderConnection({
     });
   },
 
-  onVocabularyChanged: (term, isSaved) => {
-    if (definitionBox.isOpen && definitionBox.term === term) {
+  onVocabularyChanged: (term, isSaved, forms) => {
+    // The box may be open on any form of the word — `running`, with `run` saved (D39).
+    const boxTerm = definitionBox.term;
+    if (definitionBox.isOpen && boxTerm !== undefined && (boxTerm === term || forms.includes(boxTerm))) {
       definitionBox.setSaved(isSaved);
     }
 
     if (!paragraphsContainer) return;
     if (isSaved) {
-      underlineTerm(paragraphsContainer, term);
+      underlineTerm(paragraphsContainer, term, forms);
     } else {
       removeUnderline(paragraphsContainer, term);
     }

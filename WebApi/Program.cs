@@ -7,6 +7,7 @@ using NovelReader.Dictionary;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.User;
+using NovelReader.Domain.RealTimeReader.Vocabulary;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Primitives;
 
@@ -28,6 +29,7 @@ namespace NovelReader
 			builder.Services.AddSingleton<ChapterPreparationService>();
 			builder.Services.AddSingleton<ChapterReader>();
 			builder.Services.AddSingleton<NovelLibraryService>();
+			builder.Services.AddSingleton<VocabularyBaseForms>();
 			builder.Services.AddSingleton<AssetVersion>();
 
 			// Also what the auth cookie is signed with, so persisting the keys keeps readers

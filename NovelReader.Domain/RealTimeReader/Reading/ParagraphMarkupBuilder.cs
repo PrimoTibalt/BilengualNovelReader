@@ -18,7 +18,18 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 
 		public const string KnownWordClass = "known-word";
 
-		public static string BuildMarkup(string? paragraphText, IReadOnlySet<string> knownTerms)
+		/// <summary>
+		/// Bumped whenever the same text and vocabulary would mark up differently, so prepared
+		/// chapters cached under the old rules are thrown away rather than served. 2: saved words
+		/// match in all their forms (D39).
+		/// </summary>
+		public const int Version = 2;
+
+		/// <summary>
+		/// <paramref name="knownTerms"/> maps every form a saved word is matched in to the word
+		/// as saved (D39). The span carries the saved word, so tapping `running` opens `run`.
+		/// </summary>
+		public static string BuildMarkup(string? paragraphText, IReadOnlyDictionary<string, string> knownTerms)
 		{
 			if (string.IsNullOrEmpty(paragraphText))
 			{
@@ -83,7 +94,7 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 			string text,
 			List<TokenSpan> tokens,
 			int tokenIndex,
-			IReadOnlySet<string> knownTerms,
+			IReadOnlyDictionary<string, string> knownTerms,
 			out string normalizedTerm)
 		{
 			int longestPossible = Math.Min(MaxPhraseTokens, tokens.Count - tokenIndex);
@@ -92,9 +103,9 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 				int start = tokens[tokenIndex].Start;
 				int end = tokens[tokenIndex + length - 1].End;
 				string candidate = TermNormalizer.Normalize(text[start..end]);
-				if (candidate.Length > 0 && knownTerms.Contains(candidate))
+				if (candidate.Length > 0 && knownTerms.TryGetValue(candidate, out string? savedTerm))
 				{
-					normalizedTerm = candidate;
+					normalizedTerm = savedTerm;
 					return length;
 				}
 			}

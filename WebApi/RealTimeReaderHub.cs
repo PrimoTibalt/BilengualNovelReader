@@ -24,6 +24,8 @@ namespace NovelReader
 		NovelLibraryService novelLibraryService,
 		ISearchNovelsRetriever searchNovelsRetriever,
 		AssistedDefinitionService definitionService,
+		DefinitionLookupService dictionary,
+		VocabularyBaseForms vocabularyBaseForms,
 		IVocabularyRepository vocabularyRepository,
 		IPreparedChapterCache preparedChapterCache,
 		TranslationService translationService,
@@ -46,6 +48,9 @@ namespace NovelReader
 		public async Task<ReadingSessionResponse> GetReadingSession()
 		{
 			string userName = CallerName;
+
+			// Words saved before base forms existed get theirs, in the background (D39).
+			vocabularyBaseForms.EnsureFor(userName);
 
 			// Returns what is stored and refreshes anything stale in the background (D22).
 			IReadOnlyList<NovelSummary> novels = await novelLibraryService.GetLibraryAsync(userName, Context.ConnectionAborted);
@@ -209,7 +214,8 @@ namespace NovelReader
 				return;
 			}
 
-			bool isSaved = await vocabularyRepository.ContainsAsync(userName, normalizedTerm, Context.ConnectionAborted);
+			// Saved in any of its forms: with `run` kept, `running` is a saved word too (D39).
+			bool isSaved = (await VocabularyFormsAsync(userName)).SavedTermFor(normalizedTerm) is not null;
 
 			WordDefinition? definition = null;
 			try
@@ -372,6 +378,12 @@ namespace NovelReader
 				summary?.KeyHint,
 				Error: null);
 
+		/// <summary>
+		/// Keeps a word, with its base form worked out now (D39): the dictionary's "past tense of
+		/// X" when it has one — usually cached, as the reader has just looked the word up — and
+		/// the suffix rules, at match time, when it has no entry at all. The page is sent every form, so text already on
+		/// screen is underlined the same way the server will mark up the next chapter.
+		/// </summary>
 		public async Task SaveWord(string novelName, string surfaceForm)
 		{
 			string userName = CallerName;
@@ -382,20 +394,39 @@ namespace NovelReader
 				return;
 			}
 
-			await vocabularyRepository.AddAsync(userName, new VocabularyEntry
+			WordDefinition? definition = null;
+			try
+			{
+				definition = await dictionary.LookUpAsync(normalizedTerm, Context.ConnectionAborted);
+			}
+			catch (Exception exception)
+			{
+				// The rules can still find a base form; a dictionary outage must not lose the save.
+				logger.LogWarning(exception, "Dictionary lookup for the base form of {Term} failed", normalizedTerm);
+			}
+
+			VocabularyEntry entry = new()
 			{
 				NormalizedTerm = normalizedTerm,
+				// Null when the dictionary has no entry: the suffix rules then answer at match time.
+				BaseForm = WordForms.BaseFromDictionary(normalizedTerm, definition),
 				SurfaceForm = surfaceForm.Trim(),
 				NovelName = novelName,
 				SavedAtUtc = DateTime.UtcNow
-			}, Context.ConnectionAborted);
+			};
+			await vocabularyRepository.AddAsync(userName, entry, Context.ConnectionAborted);
 
 			// Underlines are baked into cached markup, so those chapters are now stale (F5).
 			await preparedChapterCache.InvalidateForUserAsync(userName, Context.ConnectionAborted);
 
-			await Clients.Caller.SendAsync("ReturnVocabularyChanged", new VocabularyChangedResponse(normalizedTerm, true));
+			await Clients.Caller.SendAsync("ReturnVocabularyChanged", new VocabularyChangedResponse(
+				normalizedTerm, true, [.. VocabularyForms.FormsOf(entry)]));
 		}
 
+		/// <summary>
+		/// Forgets a word. Asked for by any of its forms — the reader may be looking at `running`
+		/// with `run` saved — so the form is traced back to the word that was actually kept (D39).
+		/// </summary>
 		public async Task DeleteWord(string surfaceForm)
 		{
 			string userName = CallerName;
@@ -406,10 +437,19 @@ namespace NovelReader
 				return;
 			}
 
-			await vocabularyRepository.RemoveAsync(userName, normalizedTerm, Context.ConnectionAborted);
+			IReadOnlyCollection<VocabularyEntry> entries =
+				await vocabularyRepository.GetAllForUserAsync(userName, Context.ConnectionAborted);
+			string savedTerm = new VocabularyForms(entries).SavedTermFor(normalizedTerm) ?? normalizedTerm;
+			VocabularyEntry? removed = entries.FirstOrDefault(entry => entry.NormalizedTerm == savedTerm);
+
+			await vocabularyRepository.RemoveAsync(userName, savedTerm, Context.ConnectionAborted);
 			await preparedChapterCache.InvalidateForUserAsync(userName, Context.ConnectionAborted);
 
-			await Clients.Caller.SendAsync("ReturnVocabularyChanged", new VocabularyChangedResponse(normalizedTerm, false));
+			await Clients.Caller.SendAsync("ReturnVocabularyChanged", new VocabularyChangedResponse(
+				savedTerm, false, removed is null ? [savedTerm] : [.. VocabularyForms.FormsOf(removed)]));
 		}
+
+		private async Task<VocabularyForms> VocabularyFormsAsync(string userName) =>
+			new(await vocabularyRepository.GetAllForUserAsync(userName, Context.ConnectionAborted));
 	}
 }

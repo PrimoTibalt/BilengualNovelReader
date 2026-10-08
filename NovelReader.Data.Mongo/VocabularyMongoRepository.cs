@@ -26,7 +26,8 @@ namespace NovelReader.Data.Mongo
 				{ "term", entry.NormalizedTerm },
 				{ "surface", entry.SurfaceForm },
 				{ "novel", entry.NovelName },
-				{ "savedAt", entry.SavedAtUtc }
+				{ "savedAt", entry.SavedAtUtc },
+				{ "base", entry.BaseForm is null ? BsonNull.Value : entry.BaseForm }
 			};
 
 			// Upsert so saving the same word twice is harmless rather than a duplicate-key error.
@@ -77,6 +78,9 @@ namespace NovelReader.Data.Mongo
 				NormalizedTerm = document.GetValue("term", BsonString.Empty).AsString,
 				SurfaceForm = document.GetValue("surface", BsonString.Empty).AsString,
 				NovelName = document.GetValue("novel", BsonString.Empty).AsString,
+				BaseForm = document.TryGetValue("base", out BsonValue baseForm) && baseForm.IsString
+					? baseForm.AsString
+					: null,
 				SavedAtUtc = document.TryGetValue("savedAt", out BsonValue savedAt) && savedAt.IsValidDateTime
 					? savedAt.ToUniversalTime()
 					: DateTime.UnixEpoch

@@ -69,6 +69,10 @@ namespace NovelReader
 		public const string KeyInvalid = "key-invalid";
 	}
 
-	/// <summary>Sent after a save or delete so the page can update underlines in place.</summary>
-	public record VocabularyChangedResponse(string Term, bool IsSaved);
+	/// <summary>
+	/// Sent after a save or delete so the page can update underlines in place.
+	/// <see cref="Term"/> is the word as saved; <see cref="Forms"/> is every form it is matched
+	/// in, so the page underlines exactly what the server would (D39).
+	/// </summary>
+	public record VocabularyChangedResponse(string Term, bool IsSaved, IReadOnlyList<string> Forms);
 }
