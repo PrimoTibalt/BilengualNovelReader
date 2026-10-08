@@ -5,6 +5,8 @@ using NovelReader.Data.Sqlite;
 using NovelReader.Dictionary;
 using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.User;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Primitives;
 
 namespace NovelReader
 {
@@ -57,38 +59,53 @@ namespace NovelReader
 
 			builder.Services.AddAuthorization();
 			builder.Services.AddControllersWithViews();
-			// A reader can now have two questions in flight at once: pressing `t` on a phrase asks
-			// for the translation and the definition together, and the translation must not wait
-			// for the definition to finish (D32). SignalR serialises invocations per connection by
-			// default — one at a time — so a phrase, whose definition misses Wiktionary and falls
-			// through to the slow second provider (D1), held its translation behind it for seconds.
-			// This does not weaken D17: chapters are serialised by the UserRequestGate, not by this.
+
 			builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 4);
 
-			var app = builder.Build();
+      var app = builder.Build();
+      app.UseForwardedHeaders(new() {
+          ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor
+          });
+      app.Use((context, next) =>
+          {
+          if (context.Request.Headers.TryGetValue("X-Forwarded-Prefix", out StringValues prefix))
+          {
+            string? firstPrefix = prefix[0];
+            if (!string.IsNullOrEmpty(firstPrefix))
+            {
+              firstPrefix = firstPrefix[0] == '/' ? firstPrefix : string.Concat("/", firstPrefix[0]);
+              prefix = new StringValues(
+                   [
+                   firstPrefix,
+                   .. prefix.Select(value => value).TakeLast(prefix.Count-1)
+                   ]
+              );
+              context.Request.PathBase = prefix.ToString();
+            }
+          }
+          return next();
+          });
 
-			var assetVersion = app.Services.GetRequiredService<AssetVersion>();
-
+      if (!app.Environment.IsDevelopment())
+      {
+        app.UseHsts();
+      }
+      string? assetVersion = app.Services.GetRequiredService<AssetVersion>().PathPrefix;
 			// Versioned assets: /_v/{token}/… serves the same wwwroot files, but the token
 			// changes with every build (D25), so a returning reader fetches fresh URLs while the
 			// old ones stay cacheable forever. This mount comes first so its prefix wins.
 			app.UseStaticFiles(new StaticFileOptions
 			{
-				RequestPath = assetVersion.PathPrefix,
+				RequestPath = assetVersion,
 				OnPrepareResponse = context =>
 					context.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable",
 			});
 
-			// Unversioned static files (a direct hit, the favicon) still work, but must
-			// revalidate so a stale copy is never used — the versioned URLs above are the path
-			// the pages actually reference.
 			app.UseStaticFiles(new StaticFileOptions
 			{
 				OnPrepareResponse = context =>
 					context.Context.Response.Headers.CacheControl = "no-cache",
 			});
-
-			app.UseHttpsRedirection();
 
 			app.UseAuthentication();
 			app.UseAuthorization();
@@ -96,9 +113,10 @@ namespace NovelReader
 			app.MapControllers().WithStaticAssets();
 			app.MapHub<RealTimeReaderHub>("/signalr");
 
-			// Nothing useful lives at the root; send people wherever they belong.
-			app.MapGet("/", (HttpContext context) =>
-				Results.Redirect(context.User.Identity?.IsAuthenticated == true ? "/ReadingPage" : "/Login"));
+			app.MapGet("/", (HttpContext context) => {
+        string uri = context.Request.PathBase + (context.User.Identity?.IsAuthenticated == true ? "/ReadingPage" : "/Login");
+        return Results.Redirect(uri);
+      });
 
 			app.Run();
 		}

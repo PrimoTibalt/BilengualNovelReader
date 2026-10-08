@@ -16,12 +16,13 @@ namespace NovelReader.Controllers
 			ControllerBase controller,
 			IWebHostEnvironment environment,
 			AssetVersion version,
-			string fileName)
+			string fileName,
+      string pathBase)
 		{
 			var path = Path.Combine(environment.WebRootPath, fileName);
 			var html = System.IO.File
 				.ReadAllText(path)
-				.Replace("<!--ASSET-BASE-->", $"<base href=\"{version.PathPrefix}/\">");
+				.Replace("<!--ASSET-BASE-->", $"<base href=\"{pathBase}{version.PathPrefix}/\"><meta name=\"app-base\" content=\"{pathBase}/\">");
 
 			controller.Response.Headers.CacheControl = "no-cache";
 			return controller.Content(html, "text/html; charset=utf-8");

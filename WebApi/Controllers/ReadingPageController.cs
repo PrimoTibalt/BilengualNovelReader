@@ -28,7 +28,7 @@ namespace NovelReader.Controllers
 
         public IActionResult Index()
         {
-            return VersionedPage.Serve(this, _environment, _assetVersion, "index.html");
+            return VersionedPage.Serve(this, _environment, _assetVersion, "index.html", Request.PathBase);
         }
 
         [HttpGet("/search/{searchInput}")]

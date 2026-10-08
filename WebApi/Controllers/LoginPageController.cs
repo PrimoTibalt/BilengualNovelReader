@@ -19,7 +19,7 @@ namespace NovelReader.Controllers
 
 		public IActionResult Index()
 		{
-			return VersionedPage.Serve(this, _environment, _assetVersion, "login.html");
+			return VersionedPage.Serve(this, _environment, _assetVersion, "login.html", Request.PathBase);
 		}
 	}
 }

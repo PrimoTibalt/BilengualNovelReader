@@ -615,7 +615,8 @@ function rootScreen(): MenuScreen {
       {
         label: "Sign out",
         run: () => {
-          window.location.href = "/auth/signout";
+          const pathBase = document.querySelector<HTMLMetaElement>('meta[name="app-base"]') ?? { content: '' } as HTMLMetaElement;
+          window.location.href = `${pathBase.content}auth/signout`;
         },
       },
     ],

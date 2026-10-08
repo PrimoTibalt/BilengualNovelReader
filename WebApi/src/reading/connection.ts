@@ -163,8 +163,9 @@ export class ReaderConnection {
   constructor(callbacks: ReaderConnectionCallbacks) {
     this.#callbacks = callbacks;
 
+    const pathBase = document.querySelector<HTMLMetaElement>('meta[name="app-base"]') ?? { content: '' } as HTMLMetaElement;
     this.#connection = new signalR.HubConnectionBuilder()
-      .withUrl("/signalr")
+      .withUrl(`${pathBase.content}signalr`)
       // A second apart, for as long as it takes: a reader who put their phone down mid-
       // chapter comes back to a page that has quietly reconnected (D28).
       .withAutomaticReconnect({
@@ -348,7 +349,8 @@ export class ReaderConnection {
   #returnToLoginIfSessionExpired(error: unknown): boolean {
     if (!isSessionExpired(error)) return false;
 
-    window.location.href = "/Login";
+    const pathBase = document.querySelector<HTMLMetaElement>('meta[name="app-base"]') ?? { content: '' } as HTMLMetaElement;
+    window.location.href = `${pathBase.content}Login`;
     return true;
   }
 

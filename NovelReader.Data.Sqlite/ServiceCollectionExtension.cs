@@ -11,9 +11,9 @@ namespace NovelReader.Data.Sqlite
 		/// Registers account storage and creates the database file if it is missing, so a
 		/// fresh clone can sign up without a setup step.
 		/// </summary>
-		public static void AddSqliteAccounts(this IServiceCollection services, IConfiguration configuration)
+		public static void AddSqliteAccounts(this IServiceCollection services, IConfiguration config)
 		{
-			string connectionString = configuration.GetConnectionString("AccountsConnectionString")
+			string connectionString = config.GetConnectionString("AccountsConnectionString")
 				?? "Data Source=novelreader-accounts.db";
 
 			SqliteUserAccountRepository.EnsureCreated(connectionString);

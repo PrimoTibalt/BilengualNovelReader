@@ -79,7 +79,8 @@ async function submit(): Promise<void> {
   setMessage(mode === "signup" ? "Creating the account…" : "Signing in…", "working");
 
   try {
-    const response = await fetch(`/auth/${mode}`, {
+    const pathBase = document.querySelector<HTMLMetaElement>('meta[name="app-base"]') ?? { content: '' } as HTMLMetaElement;
+    const response = await fetch(`${pathBase.content}auth/${mode}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userName, password }),
@@ -90,7 +91,7 @@ async function submit(): Promise<void> {
 
     if (response.ok && payload.succeeded) {
       setMessage("Signed in. Opening your novel…");
-      window.location.href = payload.redirectTo ?? "/ReadingPage";
+      window.location.href = pathBase.content + (payload.redirectTo ?? "/ReadingPage").replace(/^\//, '');
       return;
     }
 

@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -13,11 +13,13 @@ namespace NovelReader.Data.Mongo
 {
 	public static class ServiceCollectionExtension
 	{
-		public static void AddMongoClient(this IServiceCollection services, IConfiguration configuration)
+		public static void AddMongoClient(this IServiceCollection services, IConfiguration config)
 		{
-			MongoClientSettings? settings = MongoClientSettings.FromConnectionString(configuration.GetConnectionString("DefaultConnectionString"));
-      string certificatePath = configuration["X509Certificate"] ?? throw new ArgumentException();
-      string certificatePass = configuration["X509CertificatePass"] ?? throw new ArgumentException();
+      string? mongodbAtlusConnectionString = config.GetConnectionString("DefaultConnectionString");
+      string certificatePath = config["MongoOptions:X509Certificate"] ?? throw new ArgumentException();
+      string certificatePass = config["MongoOptions:X509CertificatePass"] ?? throw new ArgumentException();
+
+			MongoClientSettings? settings = MongoClientSettings.FromConnectionString(mongodbAtlusConnectionString);
 
       X509Certificate2 certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, certificatePass);
       settings.SslSettings = new() {
