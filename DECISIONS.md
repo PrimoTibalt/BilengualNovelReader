@@ -1196,3 +1196,86 @@ novel already cached.
   wrapped by this or clipped by anything.
 - The separator's own characters are hidden (`font-size: 0`), so the paragraph keeps its
   `data-chapter`/`data-paragraph` attributes and the bookmark still counts it (D19).
+
+---
+
+## D35 — A settings drawer, and the reader's own AI for definitions and translations
+
+**Status:** Adopted · 2026-10-08
+
+**Context.** Readers wanted to set the column's size and colours, and to have definitions
+and translations come from an AI of their choosing, read against the paragraph the word sits
+in. The dictionaries (D1) and MyMemory (D31) answer for a word in isolation. "Sneered" has
+one meaning in a dictionary, but which one the author meant depends on the sentence.
+
+**Decision: the drawer.** A panel on the left, opened by a `>` button in the top-left corner
+(it turns into `<` to close) or by `c`, and closed by `c`, Escape, or a tap on the page beside it.
+Its background is see-through and blurred, so the reader can watch the page change behind it.
+The drawer knows nothing about any one setting. It is a scrolling column of `SettingsSection`s,
+so a new option is a new section added to the list in `realTimeReader.ts`.
+
+**Appearance is per device, in `localStorage`.** A font size that suits a phone is wrong on a
+monitor. The page also has to paint in the reader's colours before it has heard from the
+server, or a light page flashes dark on every load. So an inline script in `index.html`'s
+`<head>` copies the three values onto `<html>` as custom properties before the first paint.
+A field left at its default is *absent*, not a copy of the default. Reset removes the
+property, and the stylesheet's own value comes back. The slider scales `#novel-paragraphs`
+only. The body keeps its 1.8em, because every TUI panel sizes itself from the body.
+
+**The AI is on the account, and the key is encrypted.** The key is stored in three columns
+on the SQLite account row (service, model, key). The key is protected with ASP.NET Core Data
+Protection before it is written, and it is never sent back to the page; the page sees only
+its last four characters. The key ring sits beside the accounts database
+(`novelreader-keys/`), so no deploy can keep one and lose the other. If the key can no longer
+be decrypted, the AI counts as not configured, and the reader enters the key again.
+
+**Services are a fixed list, not a URL.** If the reader could type a base URL, they could make
+the server call any address, its own network included, with a key in the header. Every
+service on the list speaks the OpenAI chat completions dialect, so one client serves them all.
+
+**Context, and what is not done with it.** While an AI is set up, the page sends the
+paragraph's text with every definition and translation request (capped at 2000 characters
+server-side). AI definitions are **not cached**, because an answer about one word in one
+paragraph is not the word's meaning for every reader (D2). If the AI fails, the dictionary or
+MyMemory answers instead. The box names its source, so the reader can see that it fell back,
+and the server logs the service's reason.
+
+**Three things measured, not assumed.**
+- `reasoning_effort: "none"` makes glm-5.3 answer directly: a translation in fifteen tokens.
+  Without it, the model spent 400 tokens reasoning and was cut off before answering. A model
+  that rejects the field gets a 400, is retried once without it, and is remembered.
+- DigitalOcean's gateway answers **403 "not authorized"** to
+  `Content-Type: application/json; charset=utf-8`, the default `StringContent` sends. The
+  same key and body pass without the charset parameter.
+- No temperature and no token limit are sent. Newer OpenAI models refuse both under their old
+  names.
+
+**Consequences.**
+- glm-5.3 takes about 5–10 s for a definition, so the box's dim `still looking…` (D33) is
+  the ordinary case for an AI definition, not the exception.
+- Translating with an AI still needs the target language from the D31 form, and that form
+  still asks for an email the AI does not need. That is left as is for now.
+- Data Protection also signs the auth cookie. Persisting the key ring means readers stay
+  signed in across restarts, but everyone is signed out once, the first time this deploys.
+- On touch, the definition box does not show who answered. The hint bar names the source,
+  and touch hides the hint bar. A translation's note does show it (`ru · glm-5.3`), but if the
+  AI fails on a definition, a phone reader cannot tell that the dictionary answered instead.
+- Escape closes the drawer even from inside one of its fields. That is deliberate: the
+  router ignores keys while a text field has focus, so without its own Escape handler the
+  drawer could only be closed with the mouse after typing a colour.
+
+**Verified on a phone** (Galaxy S23+, Firefox, 1080×2340):
+
+| step | result |
+|---|---|
+| tap `>` | drawer slides in, button becomes `<`, page blurred and visible behind it |
+| swipe inside the drawer | body scrolls down to the API key field and save/remove |
+| type `f4ecd8` as background | page turns cream as it is typed; the drawer's transparency is plain against it |
+| drag the slider | 155%, column re-set live, reader kept on the same paragraph |
+| `reset to defaults` | back to `#1b1b1b` / `#b2b2b2` at 100%, storage entry removed |
+| tap the dimmed page | drawer closes |
+| long-press "lanterns", `d definition` | definition from glm-5.3 |
+| `translate` | `фонари`, noted `ru · glm-5.3` |
+
+One fix came out of it. At phone width, the key field's placeholder was cut off at "…keep the
+saved". It now reads `empty keeps saved key`.

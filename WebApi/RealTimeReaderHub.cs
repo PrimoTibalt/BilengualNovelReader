@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Reading;
@@ -22,11 +23,12 @@ namespace NovelReader
 		IReadingProgressStore readingProgressStore,
 		NovelLibraryService novelLibraryService,
 		ISearchNovelsRetriever searchNovelsRetriever,
-		DefinitionLookupService definitionLookupService,
+		AssistedDefinitionService definitionService,
 		IVocabularyRepository vocabularyRepository,
 		IPreparedChapterCache preparedChapterCache,
 		TranslationService translationService,
 		ITranslationSettingsStore translationSettings,
+		AssistantSettingsService assistantSettings,
 		ILogger<RealTimeReaderHub> logger) : Hub
 	{
 		/// <summary>Where a reader with no history starts.</summary>
@@ -59,7 +61,8 @@ namespace NovelReader
 				mostRecent is not null,
 				settings?.Email,
 				settings?.TargetLanguage,
-				[.. TranslationLanguages.All.Select(language => new TranslationLanguageResponse(language.Code, language.Name))]);
+				[.. TranslationLanguages.All.Select(language => new TranslationLanguageResponse(language.Code, language.Name))],
+				await DescribeAssistantAsync(userName));
 		}
 
 		/// <summary>
@@ -131,7 +134,8 @@ namespace NovelReader
 				progress is not null,
 				settings?.Email,
 				settings?.TargetLanguage,
-				[.. TranslationLanguages.All.Select(language => new TranslationLanguageResponse(language.Code, language.Name))]);
+				[.. TranslationLanguages.All.Select(language => new TranslationLanguageResponse(language.Code, language.Name))],
+				await DescribeAssistantAsync(userName));
 		}
 
 		/// <summary>
@@ -191,8 +195,11 @@ namespace NovelReader
 		/// <summary>
 		/// Looks a selection up. Always answers — a word with no definition comes back with
 		/// Found = false rather than silence, so the box can say so.
+		///
+		/// <paramref name="paragraph"/> is the text the selection was made in. The page sends it
+		/// only when the reader has an AI set up, which reads the word against it (D35).
 		/// </summary>
-		public async Task GetDefinition(string surfaceForm)
+		public async Task GetDefinition(string surfaceForm, string? paragraph)
 		{
 			string userName = CallerName;
 
@@ -207,7 +214,7 @@ namespace NovelReader
 			WordDefinition? definition = null;
 			try
 			{
-				definition = await definitionLookupService.LookUpAsync(normalizedTerm, Context.ConnectionAborted);
+				definition = await definitionService.LookUpAsync(userName, normalizedTerm, paragraph, Context.ConnectionAborted);
 			}
 			catch (Exception exception)
 			{
@@ -241,8 +248,10 @@ namespace NovelReader
 		/// reader's stored settings are used. They are accepted because the first translation a
 		/// reader ever asks for is sent at the same moment as the save that stores those
 		/// settings: without carrying them, that one request would race the write and lose.
+		///
+		/// <paramref name="paragraph"/> is context for the reader's AI, as for a definition (D35).
 		/// </summary>
-		public async Task Translate(string surfaceForm, string? email = null, string? language = null)
+		public async Task Translate(string surfaceForm, string? email, string? language, string? paragraph)
 		{
 			string userName = CallerName;
 
@@ -256,7 +265,7 @@ namespace NovelReader
 			try
 			{
 				outcome = await translationService.TranslateAsync(
-					userName, normalizedTerm, email, language, Context.ConnectionAborted);
+					userName, normalizedTerm, email, language, paragraph, Context.ConnectionAborted);
 			}
 			catch (Exception exception)
 			{
@@ -272,7 +281,8 @@ namespace NovelReader
 					surfaceForm,
 					outcome.Translation!.Text,
 					outcome.Translation.TargetLanguage,
-					Error: null),
+					Error: null,
+					outcome.Translation.ProviderName),
 				TranslationFailure.NotConfigured =>
 					TranslationResponse.Failed(normalizedTerm, surfaceForm, TranslationResponse.NotConfigured),
 				TranslationFailure.SettingsInvalid =>
@@ -310,6 +320,57 @@ namespace NovelReader
 
 			return new TranslationSettingsResponse(settings.Email, settings.TargetLanguage, Error: null);
 		}
+
+		/// <summary>
+		/// Stores the reader's AI: which service, which model, and the key to use (D35). An empty
+		/// key keeps the stored one, so changing model does not mean pasting the key again.
+		/// </summary>
+		public async Task<AssistantSettingsResponse> SaveAssistantSettings(string serviceId, string model, string? apiKey)
+		{
+			string userName = CallerName;
+
+			(AssistantSettingsSummary? saved, AssistantSettingsFailure failure) = await assistantSettings.SaveAsync(
+				userName, serviceId, model, apiKey, Context.ConnectionAborted);
+
+			if (failure != AssistantSettingsFailure.None)
+			{
+				AssistantSettingsResponse current = await DescribeAssistantAsync(userName);
+				return current with
+				{
+					Error = failure switch
+					{
+						AssistantSettingsFailure.ServiceUnknown => AssistantSettingsResponse.ServiceUnknown,
+						AssistantSettingsFailure.ModelInvalid => AssistantSettingsResponse.ModelInvalid,
+						_ => AssistantSettingsResponse.KeyInvalid
+					}
+				};
+			}
+
+			logger.LogInformation("AI settings stored for {User} ({Service}, {Model})", userName, saved!.ServiceId, saved.Model);
+			return AssistantResponse(saved);
+		}
+
+		/// <summary>Forgets the reader's AI, key included; the dictionaries answer again.</summary>
+		public async Task<AssistantSettingsResponse> RemoveAssistantSettings()
+		{
+			string userName = CallerName;
+
+			await assistantSettings.RemoveAsync(userName, Context.ConnectionAborted);
+			logger.LogInformation("AI settings removed for {User}", userName);
+
+			return AssistantResponse(null);
+		}
+
+		private async Task<AssistantSettingsResponse> DescribeAssistantAsync(string userName) =>
+			AssistantResponse(await assistantSettings.DescribeAsync(userName, Context.ConnectionAborted));
+
+		private static AssistantSettingsResponse AssistantResponse(AssistantSettingsSummary? summary) =>
+			new(
+				[.. AssistantServices.All.Select(service => new AssistantServiceResponse(service.Id, service.Name))],
+				summary?.ServiceId,
+				summary?.Model,
+				summary?.KeyHint,
+				Error: null);
 
 		public async Task SaveWord(string novelName, string surfaceForm)
 		{

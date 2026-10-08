@@ -25,7 +25,7 @@ namespace NovelReader
 	/// is now asked for alongside the definition rather than after it (D32), so when the answer
 	/// lands the page may not yet know what the term normalises to.
 	/// </summary>
-	public record TranslationResponse(string Term, string SurfaceForm, string? Text, string? TargetLanguage, string? Error)
+	public record TranslationResponse(string Term, string SurfaceForm, string? Text, string? TargetLanguage, string? Error, string? Provider = null)
 	{
 		public const string NotConfigured = "not-configured";
 		public const string SettingsInvalid = "settings-invalid";
@@ -46,6 +46,27 @@ namespace NovelReader
 	{
 		public const string EmailInvalid = "email-invalid";
 		public const string LanguageInvalid = "language-invalid";
+	}
+
+	/// <summary>One AI service the reader may bring a key for (D35).</summary>
+	public record AssistantServiceResponse(string Id, string Name);
+
+	/// <summary>
+	/// The reader's AI settings as the page may see them: which service and model, and the last
+	/// four characters of the key — never the key itself (D35). <see cref="ServiceId"/> null
+	/// means none is set up and the dictionaries answer. <see cref="Error"/> names the field a
+	/// save was refused for.
+	/// </summary>
+	public record AssistantSettingsResponse(
+		IReadOnlyList<AssistantServiceResponse> Services,
+		string? ServiceId,
+		string? Model,
+		string? KeyHint,
+		string? Error)
+	{
+		public const string ServiceUnknown = "service-unknown";
+		public const string ModelInvalid = "model-invalid";
+		public const string KeyInvalid = "key-invalid";
 	}
 
 	/// <summary>Sent after a save or delete so the page can update underlines in place.</summary>

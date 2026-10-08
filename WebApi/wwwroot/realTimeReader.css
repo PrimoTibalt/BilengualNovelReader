@@ -14,9 +14,14 @@ html {
 	scrollbar-gutter: stable;
 }
 
+/*
+ * The reader's own colours and size, set from the settings drawer as custom properties on
+ * <html> (D35). Unset, each falls back to the value here — which is how "reset" works: the
+ * property is removed, not set to a copy of the default.
+ */
 body {
-	background-color: #1B1B1B;
-	color: #b2b2b2;
+	background-color: var(--reader-background, #1B1B1B);
+	color: var(--reader-text, #b2b2b2);
 	font-size: 1.8em;
 	margin: 0 13% 0 13%;
 	text-align: justify;
@@ -35,6 +40,14 @@ body {
  */
 #novel-paragraphs p {
 	overflow-wrap: anywhere;
+}
+
+/*
+ * The font-size slider scales the column alone. The body keeps its 1.8em, because every panel
+ * steps its own size down from the body's (`--tui-scale`) and must not grow with the prose.
+ */
+#novel-paragraphs {
+	font-size: calc(1em * var(--reader-font-scale, 1));
 }
 
 /*

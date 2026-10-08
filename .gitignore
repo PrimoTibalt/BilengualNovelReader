@@ -494,3 +494,6 @@ WebApi/wwwroot/**/*.js.map
 *.db
 *.db-shm
 *.db-wal
+
+# Data Protection key ring, created beside the accounts database (D35)
+novelreader-keys/

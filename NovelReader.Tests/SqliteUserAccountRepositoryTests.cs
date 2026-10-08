@@ -1,5 +1,6 @@
 using NovelReader.Data.Sqlite;
 using NovelReader.Domain.RealTimeReader.Accounts;
+using NovelReader.Domain.RealTimeReader.Assistant;
 
 namespace NovelReader.Tests
 {
@@ -11,12 +12,14 @@ namespace NovelReader.Tests
 	{
 		private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"novelreader-test-{Guid.NewGuid():N}.db");
 		private readonly AccountService service;
+		private readonly SqliteUserAccountRepository repository;
 
 		public SqliteUserAccountRepositoryTests()
 		{
 			string connectionString = $"Data Source={databasePath}";
 			SqliteUserAccountRepository.EnsureCreated(connectionString);
-			service = new AccountService(new SqliteUserAccountRepository(connectionString));
+			repository = new SqliteUserAccountRepository(connectionString);
+			service = new AccountService(repository);
 		}
 
 		public void Dispose()
@@ -88,6 +91,22 @@ namespace NovelReader.Tests
 			string contents = await File.ReadAllTextAsync(databasePath);
 
 			Assert.DoesNotContain("a-good-password", contents);
+		}
+	
+		[Fact]
+		public async Task Ai_settings_round_trip_and_are_cleared_together()
+		{
+			await service.SignUpAsync("anton", "a-good-password");
+			IAssistantSettingsStore store = repository;
+
+			Assert.Null(await store.GetAsync("anton"));
+
+			await store.SaveAsync("anton", new StoredAssistantSettings("digitalocean", "glm-5.3", "protected-key"));
+			// Same account whatever the casing, as for everything else on this row.
+			Assert.Equal(new StoredAssistantSettings("digitalocean", "glm-5.3", "protected-key"), await store.GetAsync("ANTON"));
+
+			await store.RemoveAsync("anton");
+			Assert.Null(await store.GetAsync("anton"));
 		}
 	}
 }

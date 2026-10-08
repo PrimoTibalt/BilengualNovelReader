@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using NovelReader.Retrievers;
 using NovelReader.Data.Mongo;
 using NovelReader.Data.Sqlite;
 using NovelReader.Dictionary;
+using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.User;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -27,6 +29,16 @@ namespace NovelReader
 			builder.Services.AddSingleton<ChapterReader>();
 			builder.Services.AddSingleton<NovelLibraryService>();
 			builder.Services.AddSingleton<AssetVersion>();
+
+			// Also what the auth cookie is signed with, so persisting the keys keeps readers
+			// signed in across restarts as well as keeping their stored API keys readable (D35).
+			builder.Services.AddDataProtection()
+				.SetApplicationName("NovelReader")
+				.PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(
+					NovelReader.Data.Sqlite.ServiceCollectionExtension.AccountsDirectory(builder.Configuration),
+					"novelreader-keys")));
+			builder.Services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+			builder.Services.AddSingleton<AssistantSettingsService>();
 
 			builder.Services
 				.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

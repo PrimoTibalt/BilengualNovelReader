@@ -13,6 +13,22 @@
 	<link rel="stylesheet" href="./realTimeReader.css" />
 	<link rel="stylesheet" href="./interactive-select/styles.css" />
 	<link rel="stylesheet" href="./definition-box.css" />
+	<link rel="stylesheet" href="./settings-panel.css" />
+	<!--
+		The reader's appearance, applied before the first paint so a light page never flashes
+		dark first. src/settings/appearance.ts owns the format and writes the same key; this
+		only copies three values across, and anything it cannot read is left at the default.
+	-->
+	<script>
+		try {
+			var stored = JSON.parse(localStorage.getItem("novelreader.appearance") || "{}");
+			var style = document.documentElement.style;
+			var hex = /^#[0-9a-f]{6}$/i;
+			if (typeof stored.fontScale === "number") style.setProperty("--reader-font-scale", String(stored.fontScale));
+			if (hex.test(stored.background)) style.setProperty("--reader-background", stored.background);
+			if (hex.test(stored.text)) style.setProperty("--reader-text", stored.text);
+		} catch (error) { /* blocked storage: the defaults stand */ }
+	</script>
 </head>
 <body>
 	<!--
@@ -20,6 +36,17 @@
 		panel, its breadcrumb and its option rows have one definition rather than two.
 	-->
 	<nav id="navigation-container" aria-label="Navigate through your novels, search new novels" hidden></nav>
+	<!--
+		The settings drawer's toggle, top-left: `>` while the drawer is shut, `<` while it is
+		open (src/ui/settingsPanel.ts swaps the glyph). A real button on every device — the `c`
+		badge beside it is the keyboard's way in, and is hidden on touch. The drawer itself is
+		built by the same module (D35).
+	-->
+	<button id="settings-affordance" class="settings-affordance" type="button"
+			aria-label="Open settings" aria-expanded="false">
+		<span class="settings-affordance__glyph" aria-hidden="true">&gt;</span>
+		<span class="settings-affordance__key" aria-hidden="true">c</span>
+	</button>
 	<!--
 		The top-right chrome, stacked: the navigation hint first, the definition button beneath
 		it. Both are corner buttons on touch and the definition one is only ever shown there.

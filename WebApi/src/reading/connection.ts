@@ -35,6 +35,8 @@ interface TranslationWire {
   readonly targetLanguage: string | null;
   /** A code, not a sentence: `not-configured` opens the settings form (D31). */
   readonly error: string | null;
+  /** Who translated it: `MyMemory`, or the reader's AI model (D35). */
+  readonly provider: string | null;
 }
 
 interface TranslationSettingsWire {
@@ -53,6 +55,24 @@ export interface TranslationLanguageView {
 export interface TranslationSettingsResult {
   readonly email: string | null;
   readonly language: string | null;
+  readonly error: string | null;
+}
+
+/** One AI service the reader may bring a key for (D35). */
+export interface AssistantServiceView {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * The reader's AI as the server describes it — never the key, only its last four characters.
+ * `serviceId` null means none is set up. `error` names the field a save was refused for.
+ */
+export interface AssistantSettingsView {
+  readonly services: readonly AssistantServiceView[];
+  readonly serviceId: string | null;
+  readonly model: string | null;
+  readonly keyHint: string | null;
   readonly error: string | null;
 }
 
@@ -114,6 +134,7 @@ export interface ReadingSessionView {
   readonly translationEmail: string | null;
   readonly translationLanguage: string | null;
   readonly translationLanguages: readonly TranslationLanguageView[];
+  readonly assistant: AssistantSettingsView;
 }
 
 /**
@@ -202,7 +223,10 @@ export class ReaderConnection {
     this.#connection.on("ReturnTranslation", (payload: TranslationWire) => {
       callbacks.onTranslation(payload.surfaceForm, {
         text: payload.text,
-        note: payload.targetLanguage,
+        // The language, and who it came from once that is worth saying (D35).
+        note: payload.provider === null || payload.targetLanguage === null
+          ? payload.targetLanguage
+          : `${payload.targetLanguage} · ${payload.provider}`,
         error: payload.error,
       });
     });
@@ -262,8 +286,12 @@ export class ReaderConnection {
     void this.#send("ReportProgress", novelName, chapterNumber, paragraphNumber);
   }
 
-  requestDefinition(surfaceForm: string): void {
-    void this.#send("GetDefinition", surfaceForm);
+  /**
+   * `paragraph` is the text the selection was made in, sent only while the reader has an AI
+   * set up — it reads the word against it (D35). Null otherwise; the dictionaries need none.
+   */
+  requestDefinition(surfaceForm: string, paragraph: string | null): void {
+    void this.#send("GetDefinition", surfaceForm, paragraph);
   }
 
   saveWord(novelName: string, surfaceForm: string): void {
@@ -277,10 +305,34 @@ export class ReaderConnection {
   /**
    * Asks for a translation. `settings` is passed only on the very first one a reader ever
    * requests, which is sent alongside the save that stores them — every later call leaves it
-   * out and the server uses what it stored (D31).
+   * out and the server uses what it stored (D31). `paragraph` is as for a definition.
    */
-  requestTranslation(surfaceForm: string, settings?: { email: string; language: string }): void {
-    void this.#send("Translate", surfaceForm, settings?.email ?? null, settings?.language ?? null);
+  requestTranslation(
+    surfaceForm: string,
+    paragraph: string | null,
+    settings?: { email: string; language: string },
+  ): void {
+    void this.#send("Translate", surfaceForm, settings?.email ?? null, settings?.language ?? null, paragraph);
+  }
+
+  /** Stores the reader's AI. An empty key keeps the one already stored. */
+  async saveAssistantSettings(serviceId: string, model: string, apiKey: string): Promise<AssistantSettingsView | undefined> {
+    try {
+      return await this.#call<AssistantSettingsView>("SaveAssistantSettings", serviceId, model, apiKey);
+    } catch (error: unknown) {
+      console.error("Could not save AI settings:", error);
+      return undefined;
+    }
+  }
+
+  /** Forgets the reader's AI, key and all. */
+  async removeAssistantSettings(): Promise<AssistantSettingsView | undefined> {
+    try {
+      return await this.#call<AssistantSettingsView>("RemoveAssistantSettings");
+    } catch (error: unknown) {
+      console.error("Could not remove AI settings:", error);
+      return undefined;
+    }
   }
 
   /** Stores the reader's translation settings. Answers with the field to fix, or nothing. */

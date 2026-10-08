@@ -25,7 +25,7 @@ npm run typecheck  # type-check without emitting
 dotnet build -p:SkipClientBuild=true   # skip tsc, reuse the JS already in wwwroot
 ```
 
-There are no test projects in the solution yet — nothing to run for tests, and no lint/format config.
+Tests: `dotnet test NovelReader.Tests` (xunit). No lint/format config.
 
 ### Three prerequisites the build does not cover
 
@@ -121,7 +121,13 @@ Chapter URLs are built as `book/{novelName}/chapter-{chapterNumber}` against the
   migrated on start-up. **Mongo matches user names exactly while accounts match them
   case-insensitively**, so a legacy row for `Anton` is only reachable by an account registered
   as exactly `Anton`.
-- SQLite (`novelreader-accounts.db`, gitignored, created on first run): the `accounts` table.
+- SQLite (`novelreader-accounts.db`, gitignored, created on first run): the `accounts` table —
+  credentials, the D31 translation settings, and the reader's AI (`assistant_service`,
+  `assistant_model`, `assistant_key`). The key is Data-Protection-encrypted; the key ring lives
+  in `novelreader-keys/` **beside the database** and must be kept with it, or every stored API
+  key becomes unreadable (D35). **A deploy must carry over both** `novelreader-accounts.db`
+  and `novelreader-keys/`. Losing the ring also signs everyone out, because it signs the
+  auth cookie too.
 
 ### Frontend
 
@@ -135,6 +141,11 @@ TypeScript, no framework and no bundler. Sources live in `WebApi/src/`; `tsc` em
   the translation **settings form** (`e`, or `t` before anything is configured): email then a
   filtered language list, using the navigation menu's keys — type to narrow, Enter forward,
   Escape back (D31). The form is the one thing exempt from the fixed body height. Its size is fixed in CSS — three lines tall and `min(46ch, calc(100% - 24px))` wide — and must not be measured from the content or it shrinks against the right edge of the screen (D27).
+- `src/ui/settingsPanel.ts` — the left settings drawer (`>`/`<` button top-left, or `c`),
+  a scrolling stack of `SettingsSection`s; a new option is a new section in the list in
+  `realTimeReader.ts` (D35). `appearanceSection.ts` (font size, colours — per device, in
+  `localStorage`, applied pre-paint by an inline script in `index.html`) and
+  `assistantSection.ts` (the reader's AI: service, model, key).
 - `src/interactive-select/module.ts` — `NavigationMenu`, the TUI panel opened with `n`. It is a **stack of `MenuScreen`s**, not one list: activating a row can `push` another screen, Escape pops (clearing an active filter first) and closes at the root. It renders the panel itself and handles no keys — the caller binds `move`/`activate`/`back` through the router — except inside the filter field, which owns its keystrokes while focused.
 
 The top-right corner is a stack (`.reader-affordances`): the `n navigate` hint, the
@@ -148,7 +159,7 @@ chip is the only sign of a dropped connection; the client reconnects once a seco
 hub calls wait for it rather than failing, and a chapter load that a drop cut short is retried
 when it returns — which is why `ChapterView` carries `failed` as well as `found` (D28).
 
-All three panels share one palette: `wwwroot/tui.css` defines the `--tui-*` tokens and must be linked before `interactive-select/styles.css`, `definition-box.css` and `login.css`, which draw from it. Restyling the chrome means editing the tokens, not the panels. It also draws the panels' **scrollbars**, which are the one piece of shared chrome the panels do not style themselves: the two engines have to be told the same width in different languages, and the split is delicate enough that it lives in one place (D30).
+All three panels share one palette: `wwwroot/tui.css` defines the `--tui-*` tokens and must be linked before `interactive-select/styles.css`, `definition-box.css`, `settings-panel.css` and `login.css`, which draw from it. Restyling the chrome means editing the tokens, not the panels. It also draws the panels' **scrollbars**, which are the one piece of shared chrome the panels do not style themselves: the two engines have to be told the same width in different languages, and the split is delicate enough that it lives in one place (D30).
 
 Three things to keep in mind when editing:
 
@@ -182,6 +193,12 @@ endpoint is `ajax/searchLive?keyword=…` (GET only; `total_chapter` is snake_ca
 `[JsonPropertyName]` to bind). Translation is live now (D31) — MyMemory, word-level, with the
 reader's email and target language stored as two nullable columns on the SQLite account row.
 **Translations are not cached** the way definitions are (D2); that is the obvious next step.
+
+A reader can bring their own AI (D35): `AssistedDefinitionService` and `TranslationService`
+ask it first, sending the paragraph as context, and fall back to the dictionaries/MyMemory
+when it fails. `OpenAiCompatibleAssistant` (in `NovelReader.Dictionary`) speaks the OpenAI
+chat-completions dialect to a fixed list of services (`AssistantServices`) — never a
+user-supplied URL.
 
 Accounts have no password change, no reset, and no rate limit on sign-in attempts.
 

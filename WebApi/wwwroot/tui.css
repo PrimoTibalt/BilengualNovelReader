@@ -46,8 +46,8 @@ html.touch-input {
 }
 
 /*
- * The panels' scrollbars, drawn once here so the definition box and the navigation menu
- * cannot drift apart — and so the same reader sees the same bar in either browser.
+ * The panels' scrollbars, drawn once here so the definition box, the navigation menu and
+ * the settings drawer cannot drift apart — and so the same reader sees the same bar in either browser.
  *
  * Left alone the engines disagree loudly: Gecko draws a thin bar, Blink a wide one with a
  * rounded thumb. Worse, they cannot be told the same thing — Blink ignores the pseudo-elements
@@ -59,17 +59,20 @@ html.touch-input {
 /* Blink and WebKit: the legacy pseudo-elements, given the width outright. Gecko does not
    implement them, so it drops these rules as invalid. */
 .definition-box__body::-webkit-scrollbar,
-.navigation-panel__body::-webkit-scrollbar {
+.navigation-panel__body::-webkit-scrollbar,
+.settings-panel__body::-webkit-scrollbar {
 	width: var(--tui-scroll-width);
 }
 
 .definition-box__body::-webkit-scrollbar-track,
-.navigation-panel__body::-webkit-scrollbar-track {
+.navigation-panel__body::-webkit-scrollbar-track,
+.settings-panel__body::-webkit-scrollbar-track {
 	background-color: var(--tui-scroll-track);
 }
 
 .definition-box__body::-webkit-scrollbar-thumb,
-.navigation-panel__body::-webkit-scrollbar-thumb {
+.navigation-panel__body::-webkit-scrollbar-thumb,
+.settings-panel__body::-webkit-scrollbar-thumb {
 	background-color: var(--tui-scroll-thumb);
 	border-radius: 0;   /* square, like everything else in the panels */
 }
@@ -87,7 +90,8 @@ html.touch-input {
  */
 @supports (-moz-appearance: none) {
 	.definition-box__body,
-	.navigation-panel__body {
+	.navigation-panel__body,
+	.settings-panel__body {
 		scrollbar-width: thin;
 		scrollbar-color: var(--tui-scroll-thumb) var(--tui-scroll-track);
 	}

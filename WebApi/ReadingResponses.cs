@@ -50,5 +50,10 @@ namespace NovelReader
 		/// The languages the form offers. Sent with the session rather than fetched when the
 		/// form opens: it is under a kilobyte, and it means the form has nothing to wait for.
 		/// </summary>
-		IReadOnlyList<TranslationLanguageResponse> TranslationLanguages);
+		IReadOnlyList<TranslationLanguageResponse> TranslationLanguages,
+		/// <summary>
+		/// The reader's AI, for the settings panel and so the page knows to send the paragraph
+		/// with every lookup (D35). Never carries the key.
+		/// </summary>
+		AssistantSettingsResponse Assistant);
 }

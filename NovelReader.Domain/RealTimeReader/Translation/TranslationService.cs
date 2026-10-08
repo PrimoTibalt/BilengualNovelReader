@@ -1,3 +1,5 @@
+using NovelReader.Domain.RealTimeReader.Assistant;
+
 namespace NovelReader.Domain.RealTimeReader.Translation
 {
 	public enum TranslationFailure
@@ -24,16 +26,45 @@ namespace NovelReader.Domain.RealTimeReader.Translation
 	/// very first translation is sent at the same moment as the save that stores them, so that
 	/// one call carries them itself (D31) — otherwise the two race and the first translation a
 	/// reader ever asks for is the one that fails.
+	///
+	/// A reader who has set an AI up is translated by it instead, with the paragraph the
+	/// selection came from as context (D35). The AI only needs the target language; if it
+	/// fails, the provider is tried as before, so a bad key degrades rather than breaks.
 	/// </summary>
-	public sealed class TranslationService(ITranslationSettingsStore store, ITranslationProvider provider)
+	public sealed class TranslationService(
+		ITranslationSettingsStore store,
+		ITranslationProvider provider,
+		AssistantSettingsService assistantSettings,
+		IAssistant assistant)
 	{
 		public async Task<TranslationOutcome> TranslateAsync(
 			string userName,
 			string text,
 			string? emailOverride = null,
 			string? languageOverride = null,
+			string? paragraph = null,
 			CancellationToken cancellationToken = default)
 		{
+			AssistantSettings? aiSettings = await assistantSettings.GetAsync(userName, cancellationToken);
+			if (aiSettings is not null)
+			{
+				string? language = TranslationLanguages.Normalize(languageOverride)
+					?? (await store.GetAsync(userName, cancellationToken))?.TargetLanguage;
+
+				TranslationLanguage? target = TranslationLanguages.All.FirstOrDefault(candidate => candidate.Code == language);
+				if (target is null)
+				{
+					return TranslationOutcome.Failed(TranslationFailure.NotConfigured);
+				}
+
+				string? translated = await assistant.TranslateAsync(
+					aiSettings, text, paragraph, target.Name, cancellationToken);
+				if (translated is not null)
+				{
+					return TranslationOutcome.Ok(new Translation(translated, target.Code, aiSettings.Model));
+				}
+			}
+
 			TranslationSettings? settings;
 
 			if (!string.IsNullOrWhiteSpace(emailOverride) || !string.IsNullOrWhiteSpace(languageOverride))

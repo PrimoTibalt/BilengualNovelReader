@@ -7,6 +7,7 @@ import { KeyboardRouter, bindings, type KeyMode } from "./input/keyboardRouter.j
 import { isTouchPrimary, markPointerMode } from "./input/pointer.js";
 import {
   ReaderConnection,
+  type AssistantSettingsView,
   type ChapterView,
   type ConnectionState,
   type NovelSummary,
@@ -24,7 +25,10 @@ import {
   type SelectedTerm,
 } from "./reading/selection.js";
 import { underlineTerm, removeUnderline } from "./reading/underliner.js";
+import { AppearanceSection } from "./ui/appearanceSection.js";
+import { AssistantSection } from "./ui/assistantSection.js";
 import { DefinitionBox } from "./ui/definitionBox.js";
+import { SettingsPanel } from "./ui/settingsPanel.js";
 
 /**
  * The reader is whoever the auth cookie says; the page never names them (D20). Everything
@@ -84,6 +88,15 @@ let translationEmail: string | null = null;
 let translationLanguage: string | null = null;
 let translationLanguages: readonly TranslationLanguageView[] = [];
 
+/**
+ * Whether the reader has an AI set up. While they do, every lookup carries the paragraph it
+ * was made in, which the AI reads the selection against; the dictionaries need none (D35).
+ */
+let assistantEnabled = false;
+
+/** The paragraph the open definition box was opened from — kept for a later `t` in that box. */
+let boxParagraph: string | null = null;
+
 const definitionMode: KeyMode = {
   name: "definition",
   onEnter: () => scroller.lock(),
@@ -118,6 +131,18 @@ const navigationMode: KeyMode = {
   }),
 };
 
+const settingsMode: KeyMode = {
+  name: "settings",
+  onEnter: () => scroller.lock(),
+  onExit: () => scroller.unlock(),
+  bindings: bindings({
+    j: { description: "scroll down", run: () => settingsPanel?.scroll(1) },
+    k: { description: "scroll up", run: () => settingsPanel?.scroll(-1) },
+    c: { description: "close", run: () => settingsPanel?.close() },
+    Escape: { description: "close", run: () => settingsPanel?.close() },
+  }),
+};
+
 const readingMode: KeyMode = {
   name: "reading",
   bindings: bindings({
@@ -127,6 +152,7 @@ const readingMode: KeyMode = {
     t: { description: "translate selection", run: () => translateSelection() },
     s: { description: "save selection", run: () => saveSelection() },
     n: { description: "navigation", run: () => openNavigation() },
+    c: { description: "settings", run: () => settingsPanel?.open() },
   }),
 };
 
@@ -136,7 +162,24 @@ function defineSelection(): void {
   const selected = readSelection();
   if (!selected) return;
 
-  openBoxFor(selected.text, selected.rect);
+  openBoxFor(selected.text, selected.rect, paragraphOf(selected.range.startContainer));
+}
+
+/**
+ * The text of the paragraph a node sits in, for the AI to read a selection against (D35).
+ * A selection that runs across paragraphs is read against the one it starts in.
+ */
+function paragraphOf(node: Node): string | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  const paragraph = element?.closest("p");
+  if (!paragraph || !paragraphsContainer?.contains(paragraph)) return null;
+
+  return paragraph.textContent?.trim().replace(/\s+/g, " ") || null;
+}
+
+/** The paragraph, but only when somebody is going to read it. */
+function contextToSend(): string | null {
+  return assistantEnabled ? boxParagraph : null;
 }
 
 /**
@@ -144,8 +187,9 @@ function defineSelection(): void {
  * `loading…` until the answer lands — and says so if none does — so waiting never looks the
  * same as nothing happening (D27).
  */
-function openBoxFor(term: string, anchor: DOMRect): void {
+function openBoxFor(term: string, anchor: DOMRect, paragraph: string | null): void {
   hideSelectionAffordances();
+  boxParagraph = paragraph;
 
   definitionBox.open(term, anchor, {
     onSave: (saved) => connection.saveWord(novelName, saved),
@@ -158,7 +202,7 @@ function openBoxFor(term: string, anchor: DOMRect): void {
   clearSelection();
   if (!router.has("definition")) router.push(definitionMode);
 
-  connection.requestDefinition(term);
+  connection.requestDefinition(term, contextToSend());
 }
 
 /**
@@ -172,7 +216,7 @@ function translateSelected(selected: SelectedTerm): void {
   // One word already has `d`, and its translation lives inside that box.
   if (selected.wordCount < 2) return;
 
-  openBoxFor(selected.text, rectOfRange(selected.range) ?? selected.rect);
+  openBoxFor(selected.text, rectOfRange(selected.range) ?? selected.rect, paragraphOf(selected.range.startContainer));
   translateOrConfigure(selected.text);
 }
 
@@ -193,7 +237,7 @@ function translateOrConfigure(term: string): void {
   }
 
   definitionBox.showTranslationPending();
-  connection.requestTranslation(term);
+  connection.requestTranslation(term, contextToSend());
 }
 
 /** `e`, and the toolbar's settings button. Prefilled when there is something to edit. */
@@ -222,7 +266,7 @@ async function applyTranslationSettings(email: string, language: string): Promis
   definitionBox.cancelSettings();
   if (asked !== undefined) {
     definitionBox.showTranslationPending();
-    connection.requestTranslation(asked, { email, language });
+    connection.requestTranslation(asked, contextToSend(), { email, language });
   }
 
   const result = await connection.saveTranslationSettings(email, language);
@@ -253,6 +297,7 @@ function saveSelection(): void {
 function closeDefinitionBox(): void {
   definitionBox.close();
   router.pop("definition");
+  boxParagraph = null;
 }
 
 // ---- Connection ----
@@ -490,7 +535,7 @@ paragraphsContainer?.addEventListener("click", (event) => {
   const term = knownWord.dataset["term"];
   if (!term) return;
 
-  openBoxFor(term, rectOf(knownWord));
+  openBoxFor(term, rectOf(knownWord), paragraphOf(knownWord));
 });
 
 // ---- Touch input ----
@@ -556,7 +601,7 @@ function wireTouchSelectionAffordances(
     const selected = pendingSelection;
     if (!selected) return;
 
-    openBoxFor(selected.text, rectOfRange(selected.range) ?? selected.rect);
+    openBoxFor(selected.text, rectOfRange(selected.range) ?? selected.rect, paragraphOf(selected.range.startContainer));
   });
 
   translateButton?.addEventListener("click", () => {
@@ -785,6 +830,47 @@ function openNavigation(): void {
   navigationMenu.open(rootScreen(), () => router.pop("navigation"));
 }
 
+// ---- Settings drawer ----
+
+/**
+ * Keeps the reader on the paragraph they were reading while the font size changes under them:
+ * every line below the top of the chapter moves when the font does.
+ */
+function keepPositionAcrossResize(): void {
+  const position = progressReporter?.currentPosition();
+  if (position) scrollParagraphToBottom(position.chapterNumber, position.paragraphNumber);
+}
+
+const emptyAssistant: AssistantSettingsView = { services: [], serviceId: null, model: null, keyHint: null, error: null };
+
+const assistantSection = new AssistantSection(emptyAssistant, {
+  onSave: (serviceId, model, apiKey) => connection.saveAssistantSettings(serviceId, model, apiKey),
+  onRemove: () => connection.removeAssistantSettings(),
+  onChanged: (settings) => {
+    assistantEnabled = settings.serviceId !== null;
+  },
+});
+
+const settingsAffordance = document.getElementById("settings-affordance");
+
+/**
+ * The left-hand drawer (D35). Its sections are the list below: a new kind of setting is a new
+ * {@link SettingsSection} added here, and the drawer scrolls once they outgrow the screen.
+ */
+const settingsPanel = settingsAffordance instanceof HTMLButtonElement
+  ? new SettingsPanel(settingsAffordance, [new AppearanceSection(keepPositionAcrossResize), assistantSection], {
+    onOpen: () => {
+      // The drawer covers the page; nothing else should be left open behind it.
+      if (definitionBox.isOpen) closeDefinitionBox();
+      if (navigationMenu?.isOpen) navigationMenu.close();
+      hideSelectionAffordances();
+      clearSelection();
+      if (!router.has("settings")) router.push(settingsMode);
+    },
+    onClose: () => router.pop("settings"),
+  })
+  : undefined;
+
 // ---- Connection state ----
 
 /**
@@ -823,6 +909,8 @@ connection
     translationEmail = session.translationEmail;
     translationLanguage = session.translationLanguage;
     translationLanguages = session.translationLanguages;
+    assistantEnabled = session.assistant.serviceId !== null;
+    assistantSection.setSettings(session.assistant);
 
     await openNovelAt(session.novelName, session.chapterNumber, session.paragraphNumber, session.resuming);
     window.addEventListener("orientationchange", () => {

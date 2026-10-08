@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using NovelReader.Domain.RealTimeReader.Accounts;
+using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Translation;
 
 namespace NovelReader.Data.Sqlite
@@ -9,7 +10,7 @@ namespace NovelReader.Data.Sqlite
 	/// migration framework would be more moving parts than the thing it manages.
 	/// </summary>
 	internal sealed class SqliteUserAccountRepository(string connectionString)
-		: IUserAccountRepository, ITranslationSettingsStore
+		: IUserAccountRepository, ITranslationSettingsStore, IAssistantSettingsStore
 	{
 		/// <summary>SQLite's generic constraint-violation result code.</summary>
 		private const int SqliteConstraint = 19;
@@ -122,6 +123,69 @@ namespace NovelReader.Data.Sqlite
 		}
 
 		/// <summary>
+		/// This reader's AI settings, the key still protected (D35). Null when any of the three
+		/// is missing — they are written and cleared together, so that only means "not set".
+		/// </summary>
+		async Task<StoredAssistantSettings?> IAssistantSettingsStore.GetAsync(string userName, CancellationToken cancellationToken)
+		{
+			await using SqliteConnection connection = new(connectionString);
+			await connection.OpenAsync(cancellationToken);
+
+			await using SqliteCommand command = connection.CreateCommand();
+			command.CommandText = """
+				SELECT assistant_service, assistant_model, assistant_key
+				FROM accounts
+				WHERE user_name = $userName
+				LIMIT 1;
+				""";
+			command.Parameters.AddWithValue("$userName", userName);
+
+			await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+			if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2))
+			{
+				return null;
+			}
+
+			return new StoredAssistantSettings(reader.GetString(0), reader.GetString(1), reader.GetString(2));
+		}
+
+		async Task IAssistantSettingsStore.SaveAsync(string userName, StoredAssistantSettings settings, CancellationToken cancellationToken)
+		{
+			await using SqliteConnection connection = new(connectionString);
+			await connection.OpenAsync(cancellationToken);
+
+			await using SqliteCommand command = connection.CreateCommand();
+			command.CommandText = """
+				UPDATE accounts
+				SET assistant_service = $service, assistant_model = $model, assistant_key = $key
+				WHERE user_name = $userName;
+				""";
+			command.Parameters.AddWithValue("$service", settings.ServiceId);
+			command.Parameters.AddWithValue("$model", settings.Model);
+			command.Parameters.AddWithValue("$key", settings.ProtectedApiKey);
+			command.Parameters.AddWithValue("$userName", userName);
+
+			await command.ExecuteNonQueryAsync(cancellationToken);
+		}
+
+		/// <summary>Clears all three, so a removed key is gone rather than merely unused.</summary>
+		public async Task RemoveAsync(string userName, CancellationToken cancellationToken = default)
+		{
+			await using SqliteConnection connection = new(connectionString);
+			await connection.OpenAsync(cancellationToken);
+
+			await using SqliteCommand command = connection.CreateCommand();
+			command.CommandText = """
+				UPDATE accounts
+				SET assistant_service = NULL, assistant_model = NULL, assistant_key = NULL
+				WHERE user_name = $userName;
+				""";
+			command.Parameters.AddWithValue("$userName", userName);
+
+			await command.ExecuteNonQueryAsync(cancellationToken);
+		}
+
+		/// <summary>
 		/// Creates the table if it is not there. <c>COLLATE NOCASE</c> on the primary key is
 		/// what makes "Anton" and "anton" the same account rather than two.
 		/// </summary>
@@ -147,6 +211,9 @@ namespace NovelReader.Data.Sqlite
 			// no-op, so the column list is what decides whether to run it.
 			EnsureColumn(connection, "translation_email", "TEXT NULL");
 			EnsureColumn(connection, "translation_language", "TEXT NULL");
+			EnsureColumn(connection, "assistant_service", "TEXT NULL");
+			EnsureColumn(connection, "assistant_model", "TEXT NULL");
+			EnsureColumn(connection, "assistant_key", "TEXT NULL");
 		}
 
 		private static void EnsureColumn(SqliteConnection connection, string columnName, string definition)

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Translation;
 
@@ -29,6 +30,12 @@ namespace NovelReader.Dictionary
 		/// gives up on its own after five seconds (D27) — so there is no point waiting longer.
 		/// </summary>
 		private static readonly TimeSpan TranslationTimeout = TimeSpan.FromSeconds(5);
+
+		/// <summary>
+		/// A model answering without reasoning takes a second or two. The box says
+		/// `still looking…` after five (D33), so a slow model is waited for rather than dropped.
+		/// </summary>
+		private static readonly TimeSpan AssistantTimeout = TimeSpan.FromSeconds(30);
 
 		public static void RegisterDictionaryProviders(this IServiceCollection services)
 		{
@@ -73,6 +80,18 @@ namespace NovelReader.Dictionary
 
 			services.AddSingleton<ITranslationProvider, MyMemoryTranslationProvider>();
 			services.AddSingleton<TranslationService>();
+
+			// The reader's own AI (D35). No base address: each reader's calls go to the service
+			// they picked, so the address travels with the request.
+			services.AddHttpClient(OpenAiCompatibleAssistant.HttpClientName, client =>
+			{
+				client.Timeout = AssistantTimeout;
+				client.DefaultRequestHeaders.UserAgent.Clear();
+				client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
+			});
+
+			services.AddSingleton<IAssistant, OpenAiCompatibleAssistant>();
+			services.AddSingleton<AssistedDefinitionService>();
 		}
 	}
 }

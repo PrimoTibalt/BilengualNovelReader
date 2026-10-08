@@ -2,7 +2,8 @@
 
 A keyboard-driven web reader for serialised novels, with a dictionary built into the page.
 
-Select a word, press `d`, and the definition appears in a panel pointing at it. Save the words
+Select a word, press `d`, and the definition appears in a panel pointing at it — from a
+dictionary, or from an AI of your choosing that reads the word in its paragraph. Save the words
 you look up and they stay underlined everywhere you meet them again. The reader remembers
 where you stopped — down to the paragraph — and puts it back at the bottom of the screen when
 you return.
@@ -16,6 +17,16 @@ you return.
   while you read.
 - **Defines words in place.** Wiktionary first, [dictionaryapi.dev](https://dictionaryapi.dev)
   as a fallback, cached by term. Senses page with `j`/`k`.
+- **Translates words and phrases** with [MyMemory](https://mymemory.translated.net) into a
+  language you pick once. Select a phrase and press `t`.
+- **Uses your own AI, if you want it.** In the settings drawer, choose a service
+  (DigitalOcean, OpenAI, Anthropic, OpenRouter, DeepSeek, Mistral or Groq), a model and an API
+  key. Definitions and translations then come from that model, which is sent the paragraph
+  the selection came from, so a word gets the meaning it has *there*. The key is stored
+  encrypted and never sent back to the page. If the AI fails, the dictionary answers instead.
+- **Lets you set the page up.** The settings drawer (`c`, or the `>` button in the top-left
+  corner) has a font-size slider and hex fields for the background and text colours. They are
+  kept per device and applied before the page first paints. One button resets all three.
 - **Remembers your vocabulary.** Saved words are underlined in every chapter, and clicking one
   reopens its definition.
 - **Remembers your place.** The last paragraph actually on screen is recorded once you stop
@@ -27,7 +38,9 @@ you return.
 - **Searches for new novels**, with results as you stop typing.
 - **Accounts.** Sign up, sign in, and a per-reader library and vocabulary.
 
-Everything is driven from the keyboard, and every panel is drawn in the same TUI style.
+Everything is driven from the keyboard, and every panel is drawn in the same TUI style. On a
+phone the keys become buttons: `☰ navigate` and `>` in the corners, and `d definition` /
+`t translate` while text is selected.
 
 ## Screenshots
 
@@ -78,7 +91,7 @@ Accounts live in a local SQLite file created on first run. Nothing else needs se
 ### Running the tests
 
 ```bash
-dotnet test NovelReader.sln     # 112 tests
+dotnet test NovelReader.sln     # 162 tests
 cd WebApi && npm run typecheck  # client types
 ```
 
@@ -93,8 +106,10 @@ and the bindings underneath come back untouched when it closes.
 |---|---|
 | `j` / `k` | scroll down / up |
 | `d` | define the selected word |
+| `t` | translate the selected phrase |
 | `s` | save the selected word |
 | `n` | open the navigation menu |
+| `c` | open the settings drawer |
 
 **With a definition open**
 
@@ -103,7 +118,15 @@ and the bindings underneath come back untouched when it closes.
 | `j` / `k` | next / previous sense |
 | `s` / `d` | save / delete the word |
 | `t` | translate |
+| `e` | translation settings (email and language) |
 | `Esc` | close |
+
+**In the settings drawer**
+
+| Key | |
+|---|---|
+| `j` / `k` | scroll |
+| `c` / `Esc` | close (`Esc` works from inside a field too) |
 
 **In the navigation menu**
 
@@ -127,27 +150,36 @@ package references** and holds the interfaces, POCOs and pure logic.
 |---|---|
 | `NovelReader.Domain` | contracts and business logic — reading, vocabulary, accounts, the library |
 | `NovelReader.Retrievers` | scrapes chapters and queries the catalogue |
-| `NovelReader.Dictionary` | Wiktionary and dictionaryapi.dev providers, with fallback |
+| `NovelReader.Dictionary` | dictionary providers with fallback, MyMemory translation, and the OpenAI-compatible client for the reader's AI |
 | `NovelReader.Data.Mongo` | chapters, vocabulary, bookmarks, prepared-chapter cache |
-| `NovelReader.Data.Sqlite` | user accounts |
+| `NovelReader.Data.Sqlite` | user accounts, translation settings, AI settings |
 | `WebApi` | ASP.NET Core host, SignalR hub, and the TypeScript client |
 | `NovelReader.Tests` | xUnit |
 
 The frontend is TypeScript with **no framework and no bundler** — `tsc` emits browser-native
-ES modules straight into `wwwroot/`. The three panels (definition box, navigation menu, login)
-share one palette in `wwwroot/tui.css`.
+ES modules straight into `wwwroot/`. The four panels (definition box, navigation menu, settings
+drawer, login) share one palette in `wwwroot/tui.css`. The settings drawer is a list of
+independent sections, so adding an option means adding a section. The drawer starts scrolling
+once its sections no longer fit the screen.
 
 Chapters are stored one document per chapter, per novel; bookmarks one document per
 (reader, novel). Passwords are hashed with PBKDF2-HMAC-SHA256, and the hub takes the reader
-from the authentication cookie rather than from anything the client sends.
+from the authentication cookie rather than from anything the client sends. API keys are
+encrypted with ASP.NET Core Data Protection. Its key ring sits in `novelreader-keys/` next to
+the accounts database; **back the two up together**, because the stored keys cannot be read
+without the ring. The AI services are a fixed list, never a URL the reader types, so the
+server can only be pointed at those services.
 
 ## Status and limitations
 
 This is a working personal reader, not a finished product. Worth knowing:
 
-- **Translation (`t`) is a stub.** The round trip works end to end, but the server answers with
-  a clearly-labelled placeholder — no provider is configured, and the language pair is still an
-  open question.
+- **Translations are not cached**, unlike definitions. AI answers are deliberately never
+  cached, because each one is about a word in one particular paragraph.
+- **AI definitions are slow.** With glm-5.3 they take about 5–10 s, so the box usually says
+  `still looking…` before the answer arrives.
+- **AI translation still needs the translation settings** (`e`) to know the target language, and
+  that form asks for an email the AI does not use.
 - **Chapter counts are not known per novel**, so the chapter menu shows a window around where
   you are and "next chapter" discovers the end of a novel by trying it.
 - **Accounts have no password reset**, no password change, and no rate limit on sign-in.
@@ -161,7 +193,6 @@ This is a working personal reader, not a finished product. Worth knowing:
 - [`CLAUDE.md`](CLAUDE.md) — how the codebase fits together, and the traps worth knowing before
   changing it.
 - [`DECISIONS.md`](DECISIONS.md) — why things are the way they are, one decision per entry.
-- [`TASKS.md`](TASKS.md) — what has been built, what was verified and how, and what is still open.
 
 ## A note on the source
 

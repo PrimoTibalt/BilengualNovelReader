@@ -1,0 +1,306 @@
+/*
+ * The settings drawer (D35): slides in from the left over a dimmed page, drawn in the same TUI
+ * look as the navigation menu and the definition box — monospace, sharp corners, a dim rule
+ * between sections, a hint bar along the bottom. Palette comes from tui.css.
+ *
+ * Its background is see-through on purpose: changing the page's colours or font size is the
+ * main thing done here, and the reader should be able to watch the page change behind it.
+ */
+
+/*
+ * The toggle, top-left: `>` to open, `<` to close. Above the drawer, so the same button is
+ * there to close it; the drawer's header leaves room for it.
+ */
+.settings-affordance {
+	position: fixed;
+	top: 12px;
+	left: 12px;
+	z-index: 97;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5em;
+	margin: 0;
+	padding: 0.25em 0.6em;
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	line-height: 1.5;
+	color: var(--tui-text);
+	background-color: var(--tui-bg);
+	border: 2px solid var(--tui-border);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+	appearance: none;
+	cursor: pointer;
+	user-select: none;
+}
+
+.settings-affordance:active {
+	background-color: var(--tui-selection);
+}
+
+.settings-affordance__glyph {
+	font-weight: 700;
+}
+
+/* The keyboard's way in. Drawn like the navigation hint's badge; no use on touch. */
+.settings-affordance__key {
+	border: 1px solid var(--tui-rule);
+	padding: 0 0.4em;
+	color: var(--tui-dim);
+}
+
+html.touch-input .settings-affordance {
+	padding: 0.4em 0.9em;
+}
+
+html.touch-input .settings-affordance__key,
+html.settings-open .settings-affordance__key {
+	display: none;
+}
+
+/* The page beside the open drawer: dimmed, and a tap on it closes the drawer. */
+.settings-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 95;
+	background-color: rgba(0, 0, 0, 0.35);
+}
+
+.settings-scrim[hidden] {
+	display: none;
+}
+
+.settings-panel {
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 96;
+	width: min(40ch, 88vw);
+	display: flex;
+	flex-direction: column;
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	line-height: 1.5;
+	color: var(--tui-text);
+	text-align: left;
+	/* Semi-transparent, with the page blurred behind it so the text stays readable. */
+	background-color: rgba(14, 14, 14, 0.78);
+	-webkit-backdrop-filter: blur(6px);
+	backdrop-filter: blur(6px);
+	border-right: 2px solid var(--tui-border);
+	box-shadow: 8px 0 24px rgba(0, 0, 0, 0.45);
+	transform: translateX(-100%);
+	transition: transform 160ms ease-out;
+}
+
+.settings-panel[hidden] {
+	display: none;
+}
+
+html.settings-open .settings-panel {
+	transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.settings-panel {
+		transition: none;
+	}
+}
+
+.settings-panel__header {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	/* The toggle sits over the left end of this bar. */
+	min-height: 3.2em;
+	padding: 0.5em 0.75em;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.settings-panel__title {
+	font-weight: 700;
+	color: var(--tui-accent);
+}
+
+/*
+ * The part that grows. Sections stack in it and it scrolls once they outgrow the screen,
+ * so adding a setting never changes the drawer's shape. The bar is drawn by tui.css.
+ */
+.settings-panel__body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.settings-panel__hints {
+	flex: none;
+	padding: 0.45em 0.75em;
+	border-top: 1px solid var(--tui-rule);
+	color: var(--tui-dim);
+	font-size: 0.9em;
+}
+
+html.touch-input .settings-panel__hints {
+	display: none;
+}
+
+.settings-section {
+	padding: 0.6em 0.75em 0.9em;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.settings-section__title {
+	margin: 0 0 0.6em;
+	font-size: 1em;
+	font-weight: 700;
+	color: var(--tui-accent);
+	text-transform: lowercase;
+}
+
+.settings-row {
+	display: block;
+	margin-bottom: 0.7em;
+}
+
+.settings-row__label {
+	display: block;
+	margin-bottom: 0.2em;
+	color: var(--tui-dim);
+}
+
+.settings-row__controls {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+}
+
+.settings-field {
+	flex: 1;
+	min-width: 0;
+	box-sizing: border-box;
+	padding: 0.35em 0.5em;
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+	color: var(--tui-text);
+	background-color: var(--tui-bg);
+	border: 1px solid var(--tui-rule);
+	border-radius: 0;
+	outline: none;
+}
+
+.settings-field:focus {
+	border-color: var(--tui-accent);
+}
+
+.settings-field::placeholder {
+	color: var(--tui-dim);
+}
+
+/* A hex half-typed or mistyped: marked, and not applied until it is a colour. */
+.settings-field--invalid,
+.settings-field--invalid:focus {
+	border-color: var(--tui-error);
+}
+
+.settings-field--hex {
+	text-transform: lowercase;
+}
+
+/* The native picker, squared off to match the field beside it. */
+.settings-swatch {
+	flex: none;
+	width: 2.4em;
+	height: 2.1em;
+	padding: 0;
+	background: none;
+	border: 1px solid var(--tui-rule);
+	border-radius: 0;
+	cursor: pointer;
+}
+
+.settings-swatch::-webkit-color-swatch-wrapper {
+	padding: 2px;
+}
+
+/* Two rules, not one list: a browser drops a whole rule over one selector it does not know. */
+.settings-swatch::-webkit-color-swatch {
+	border: none;
+	border-radius: 0;
+}
+
+.settings-swatch::-moz-color-swatch {
+	border: none;
+	border-radius: 0;
+}
+
+.settings-slider {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	accent-color: var(--tui-accent);
+}
+
+html.touch-input .settings-slider {
+	/* A thumb a finger can find. */
+	height: 2em;
+}
+
+.settings-slider__value {
+	flex: none;
+	min-width: 4ch;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.settings-status {
+	margin: 0 0 0.7em;
+	color: var(--tui-dim);
+}
+
+.settings-status--on {
+	color: var(--tui-accent);
+}
+
+.settings-note {
+	min-height: 1.5em;
+	margin: 0 0 0.4em;
+	color: var(--tui-dim);
+	font-style: italic;
+}
+
+.settings-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5em;
+}
+
+.settings-button {
+	appearance: none;
+	padding: 0.35em 0.8em;
+	font-family: inherit;
+	font-size: inherit;
+	line-height: 1.3;
+	color: var(--tui-text);
+	background-color: var(--tui-bg);
+	border: 1px solid var(--tui-border);
+	border-radius: 0;
+	cursor: pointer;
+}
+
+html.touch-input .settings-button {
+	min-height: 2.4em;
+	padding: 0.5em 1em;
+}
+
+.settings-button:active {
+	background-color: var(--tui-selection);
+}
+
+.settings-button:disabled {
+	color: var(--tui-dim);
+	border-color: var(--tui-rule);
+	cursor: default;
+}
