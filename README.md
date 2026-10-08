@@ -25,10 +25,14 @@ you return.
   the selection came from, so a word gets the meaning it has *there*. The key is stored
   encrypted and never sent back to the page. If the AI fails, the dictionary answers instead.
 - **Lets you set the page up.** The settings drawer (`c`, or the `>` button in the top-left
-  corner) has a font-size slider and hex fields for the background and text colours. They are
-  kept per device and applied before the page first paints. One button resets all three.
+  corner on a phone) has a font-size slider, a separate chapter-title size slider, and hex fields for the background and text colours. They are
+  kept per device and applied before the page first paints. One button resets them all.
 - **Remembers your vocabulary.** Saved words are underlined in every chapter, and clicking one
   reopens its definition.
+- **Keeps the page short.** At most four chapters are on the page at once: the one you are
+  reading, two above it and the next one below. Older chapters are removed as you read on.
+- **Holds your place when the screen changes.** Turning the phone, even while it is off, and
+  changing the font size both keep you on the paragraph you were reading.
 - **Remembers your place.** The last paragraph actually on screen is recorded once you stop
   scrolling — one request, not one per scroll event. Reopening restores that paragraph to the
   bottom of the viewport, loading the previous chapter too when the bookmark sits near the top
@@ -125,8 +129,11 @@ and the bindings underneath come back untouched when it closes.
 
 | Key | |
 |---|---|
-| `j` / `k` | scroll |
-| `c` / `Esc` | close (`Esc` works from inside a field too) |
+| `j` / `k` | previous / next row |
+| `h` / `l` | along the row (colour swatch ↔ hex, save ↔ remove); on the font-size row, smaller / larger |
+| `Enter` | edit the field under the cursor, or press the button |
+| `Esc` | leave the field you are editing, or close the drawer |
+| `c` | close |
 
 **In the navigation menu**
 

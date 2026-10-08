@@ -1,5 +1,6 @@
 /*
- * The settings drawer (D35): slides in from the left over a dimmed page, drawn in the same TUI
+ * The settings drawer (D35): opens on the left over a dimmed page — at once, without a slide;
+ * nothing on this site animates — drawn in the same TUI
  * look as the navigation menu and the definition box — monospace, sharp corners, a dim rule
  * between sections, a hint bar along the bottom. Palette comes from tui.css.
  *
@@ -8,8 +9,9 @@
  */
 
 /*
- * The toggle, top-left: `>` to open, `<` to close. Above the drawer, so the same button is
- * there to close it; the drawer's header leaves room for it.
+ * The way in, top-left. On a keyboard it is drawn exactly like the navigation hint in the
+ * opposite corner — `c settings`, dim, a hint rather than a control — so the two corners read
+ * as one piece of chrome (D36). It goes while the drawer is open, whose own hint bar takes over.
  */
 .settings-affordance {
 	position: fixed;
@@ -18,42 +20,62 @@
 	z-index: 97;
 	display: inline-flex;
 	align-items: center;
-	gap: 0.5em;
 	margin: 0;
-	padding: 0.25em 0.6em;
+	padding: 0;
 	font-family: var(--tui-mono);
 	font-size: var(--tui-scale);
 	line-height: 1.5;
+	color: var(--tui-dim);
+	background: none;
+	border: none;
+	appearance: none;
+	cursor: default;
+	pointer-events: none;
+	user-select: none;
+}
+
+html.settings-open:not(.touch-input) .settings-affordance {
+	display: none;
+}
+
+/* The badge, drawn like the navigation hint's. */
+.settings-affordance__key {
+	border: 1px solid var(--tui-rule);
+	padding: 0 0.4em;
+	margin-right: 0.4em;
+	color: var(--tui-text);
+}
+
+/* The `>` / `<` belongs to touch alone. */
+.settings-affordance__glyph {
+	display: none;
+	font-weight: 700;
+}
+
+/*
+ * On touch there is no `c`, so the hint becomes the control: a tappable button with the same
+ * chrome as the touch navigation button, `>` to open and `<` to close.
+ */
+html.touch-input .settings-affordance {
+	pointer-events: auto;
+	cursor: pointer;
+	padding: 0.4em 0.9em;
 	color: var(--tui-text);
 	background-color: var(--tui-bg);
 	border: 2px solid var(--tui-border);
 	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-	appearance: none;
-	cursor: pointer;
-	user-select: none;
 }
 
-.settings-affordance:active {
+html.touch-input .settings-affordance:active {
 	background-color: var(--tui-selection);
 }
 
-.settings-affordance__glyph {
-	font-weight: 700;
-}
-
-/* The keyboard's way in. Drawn like the navigation hint's badge; no use on touch. */
-.settings-affordance__key {
-	border: 1px solid var(--tui-rule);
-	padding: 0 0.4em;
-	color: var(--tui-dim);
-}
-
-html.touch-input .settings-affordance {
-	padding: 0.4em 0.9em;
+html.touch-input .settings-affordance__glyph {
+	display: inline;
 }
 
 html.touch-input .settings-affordance__key,
-html.settings-open .settings-affordance__key {
+html.touch-input .settings-affordance__label {
 	display: none;
 }
 
@@ -89,22 +111,10 @@ html.settings-open .settings-affordance__key {
 	backdrop-filter: blur(6px);
 	border-right: 2px solid var(--tui-border);
 	box-shadow: 8px 0 24px rgba(0, 0, 0, 0.45);
-	transform: translateX(-100%);
-	transition: transform 160ms ease-out;
 }
 
 .settings-panel[hidden] {
 	display: none;
-}
-
-html.settings-open .settings-panel {
-	transform: translateX(0);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.settings-panel {
-		transition: none;
-	}
 }
 
 .settings-panel__header {
@@ -112,7 +122,7 @@ html.settings-open .settings-panel {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
-	/* The toggle sits over the left end of this bar. */
+	/* On touch the `<` button sits over the left end of this bar. */
 	min-height: 3.2em;
 	padding: 0.5em 0.75em;
 	border-bottom: 1px solid var(--tui-rule);
@@ -197,6 +207,29 @@ html.touch-input .settings-panel__hints {
 
 .settings-field::placeholder {
 	color: var(--tui-dim);
+}
+
+/*
+ * The keyboard cursor (D36): which control Enter will act on. Drawn like the navigation menu's
+ * selected row — the accent, and the row's caption lit — and distinct from focus, which means
+ * the field is being edited. Touch has no cursor, so none is drawn there.
+ */
+html:not(.touch-input) .settings-cursor {
+	outline: 1px solid var(--tui-accent);
+	outline-offset: 2px;
+}
+
+html:not(.touch-input) .settings-row--cursor .settings-row__label {
+	color: var(--tui-accent);
+}
+
+html:not(.touch-input) .settings-row--cursor .settings-row__label::before {
+	content: "> ";
+}
+
+/* Editing: the field itself is lit, so it is plain which of the two states the drawer is in. */
+html:not(.touch-input) .settings-cursor:focus {
+	outline-width: 2px;
 }
 
 /* A hex half-typed or mistyped: marked, and not applied until it is a colour. */

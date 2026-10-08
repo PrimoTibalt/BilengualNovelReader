@@ -101,14 +101,6 @@ export class AssistantSection implements SettingsSection {
     container.appendChild(settingsRow("api key", key));
     this.#key = key;
 
-    for (const field of [model, key]) {
-      field.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        void this.#submit();
-      });
-    }
-
     const note = settingsNote();
     container.appendChild(note);
     this.#note = note;

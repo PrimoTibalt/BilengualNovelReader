@@ -17,7 +17,7 @@
 	<!--
 		The reader's appearance, applied before the first paint so a light page never flashes
 		dark first. src/settings/appearance.ts owns the format and writes the same key; this
-		only copies three values across, and anything it cannot read is left at the default.
+		only copies four values across, and anything it cannot read is left at the default.
 	-->
 	<script>
 		try {
@@ -25,6 +25,7 @@
 			var style = document.documentElement.style;
 			var hex = /^#[0-9a-f]{6}$/i;
 			if (typeof stored.fontScale === "number") style.setProperty("--reader-font-scale", String(stored.fontScale));
+			if (typeof stored.titleScale === "number") style.setProperty("--reader-title-scale", String(stored.titleScale));
 			if (hex.test(stored.background)) style.setProperty("--reader-background", stored.background);
 			if (hex.test(stored.text)) style.setProperty("--reader-text", stored.text);
 		} catch (error) { /* blocked storage: the defaults stand */ }
@@ -37,15 +38,17 @@
 	-->
 	<nav id="navigation-container" aria-label="Navigate through your novels, search new novels" hidden></nav>
 	<!--
-		The settings drawer's toggle, top-left: `>` while the drawer is shut, `<` while it is
-		open (src/ui/settingsPanel.ts swaps the glyph). A real button on every device — the `c`
-		badge beside it is the keyboard's way in, and is hidden on touch. The drawer itself is
-		built by the same module (D35).
+		The settings drawer's way in, top-left — the mirror of the navigation hint top-right.
+		On a keyboard it is drawn exactly like that hint, `c settings`, and is decorative: the
+		key does the work. On touch it becomes a button showing `>` while the drawer is shut and
+		`<` while it is open (src/ui/settingsPanel.ts swaps the glyph). The drawer itself is built
+		by the same module (D35, D36).
 	-->
 	<button id="settings-affordance" class="settings-affordance" type="button"
 			aria-label="Open settings" aria-expanded="false">
 		<span class="settings-affordance__glyph" aria-hidden="true">&gt;</span>
 		<span class="settings-affordance__key" aria-hidden="true">c</span>
+		<span class="settings-affordance__label" aria-hidden="true">settings</span>
 	</button>
 	<!--
 		The top-right chrome, stacked: the navigation hint first, the definition button beneath

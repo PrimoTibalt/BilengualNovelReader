@@ -69,10 +69,15 @@ body {
 	vertical-align: middle;
 }
 
+/*
+ * The title has its own slider (D38), independent of the column's: it sits inside
+ * #novel-paragraphs, whose size already carries `--reader-font-scale`, so that factor is
+ * divided back out and only the title's own applies.
+ */
 .data-chapter-title {
 	text-align: center;
 	font-weight: bolder;
-	font-size: 2em;
+	font-size: calc(2em * var(--reader-title-scale, 1) / var(--reader-font-scale, 1));
 }
 
 /*
@@ -83,7 +88,7 @@ body {
  * width to carry the larger one and keeps it.
  */
 html.touch-input .data-chapter-title {
-	font-size: 1.35em;
+	font-size: calc(1.35em * var(--reader-title-scale, 1) / var(--reader-font-scale, 1));
 }
 
 @media (orientation: portrait) {

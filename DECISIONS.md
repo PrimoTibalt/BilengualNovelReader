@@ -1210,6 +1210,7 @@ one meaning in a dictionary, but which one the author meant depends on the sente
 
 **Decision: the drawer.** A panel on the left, opened by a `>` button in the top-left corner
 (it turns into `<` to close) or by `c`, and closed by `c`, Escape, or a tap on the page beside it.
+(D36 changes some of this: no slide, `c settings` as the desktop hint, and j/k/h/l keys.)
 Its background is see-through and blurred, so the reader can watch the page change behind it.
 The drawer knows nothing about any one setting. It is a scrolling column of `SettingsSection`s,
 so a new option is a new section added to the list in `realTimeReader.ts`.
@@ -1279,3 +1280,113 @@ and the server logs the service's reason.
 
 One fix came out of it. At phone width, the key field's placeholder was cut off at "…keep the
 saved". It now reads `empty keeps saved key`.
+
+---
+
+## D36 — The drawer is a keyboard grid, and the reading position survives a re-layout
+
+**Status:** Adopted · 2026-10-08
+
+**Context.** Four things came out of using D35:
+- The drawer slid in, and nothing else on the site animates.
+- On a desktop, its `>` button with a `c` badge looked like nothing else on the page.
+- From the keyboard j/k only scrolled the drawer, and there was no way to reach a field
+  without the mouse.
+- A phone switched off in one orientation and back on in the other opened at a random place in
+  the chapter. That bug was older than the drawer.
+
+**Decision: no animation.** The drawer appears at once, and its CSS has no transition left.
+
+**Decision: the corner hint matches the other corner.** On a keyboard, the top-left reads
+`c settings`, drawn exactly like `n navigate` on the right: dim, decorative, out of the tab
+order, hidden while the drawer is open. Only on touch is it a button showing `>` and `<`.
+
+**Decision: a grid of rows.** j/k move from row to row (font size, background, text colour,
+reset, service, model, key, save/remove). h/l move along a row: a colour's swatch to its hex
+field, `save` to `remove`. On the slider, h/l change the font size directly. Enter edits the
+field under the cursor, or presses the button. In a field, Escape or Enter goes back to
+choosing, and Escape while choosing closes the drawer. The cursor is drawn like the navigation
+menu's selected row (accent outline, the row's caption lit with `>`). The hint bar names only
+the keys that do something where the cursor is: `h/l smaller/larger` on the slider,
+`h/l across` on a row with more than one control, nothing on a row with one.
+Rows are found from the DOM (`.settings-row`, `.settings-actions`), so a new section gets the
+keys for free.
+
+Enter in a field no longer submits the AI form. It means "done with this field", the same as
+everywhere else in the drawer, and `save` is one row down.
+
+**Decision: a font-size change keeps the bottom paragraph in place.** Each change notes the
+paragraph at the bottom of the screen, which is the one the bookmark records. It applies the
+change, puts that paragraph back at the bottom, and checks again 200 ms after the last change.
+The paragraph noted at the start of a burst (a drag, h held down) is kept for the whole burst,
+so rounding cannot drift it step by step. Measured on desktop: 100% → 160% → 110% with the
+same paragraph at the bottom throughout, 0px off.
+
+**Decision: a rotation restores a position recorded before it.** The old handler read "which
+paragraph is on screen" at `orientationchange`. After a phone wakes in the other orientation,
+the text has by then re-wrapped at the new width under the old scroll offset, so that
+reading was a paragraph the reader had never seen. `ReadingAnchor` now records the paragraph
+at the top of the screen, and how far into it the reader is, on every scroll, but only while
+the column is still the width it was recorded at. When the width changes, from `resize`,
+`orientationchange`, `pageshow` or the page becoming visible, it puts that position back. It
+repeats over 700 ms (on timers, which work in a hidden page, D23), because a phone re-lays the
+page in several steps. A change of height alone, such as a toolbar sliding away, re-wraps
+nothing and is ignored. `history.scrollRestoration` is now `manual`, so the browser's own
+memory of an offset taken at another width cannot be replayed on top.
+
+**Verified on the phone** (Firefox, S23+). Read into a chapter, sent Firefox to the
+background, rotated, and brought it back: portrait → landscape landed on the same paragraph at
+the same line. Landscape → portrait landed on the same paragraph, about two lines further in.
+
+**Consequence.** Rotation uses the top of the screen, and a font change uses the bottom. That
+is deliberate. A rotation should keep the line being read. A font change should keep the
+bookmark's paragraph, which is what the reader asked for.
+
+---
+
+## D37 — The page holds at most four chapters
+
+**Status:** Adopted · 2026-10-08
+
+**Context.** The page only ever grew. A long session left dozens of chapters on it, and
+finding a word saved earlier meant scrolling through all of them.
+
+**Decision.** Keep the chapter being read, at most **two whole chapters above it**, and the one
+already loaded below it: **four at most**. When the reader settles (the bookmark report, D19)
+and whenever a chapter is appended, everything older is removed. Whatever else happens, the
+oldest chapters go until no more than four remain. Only chapters above the one being read are
+ever removed, so everything removed is off the top of the screen. The paragraph on screen is
+measured before and after, and the scroll offset is corrected by the difference. If the
+browser's own scroll anchoring has already done that, the difference is zero.
+
+**Verified** by scrolling through eight seeded chapters on desktop. The page held
+`1,2` → `1,2,3` → `1,2,3,4` → `2,3,4,5` → … → `5,6,7,8`, and the paragraph at the bottom of the
+screen did not move at any trim.
+
+**Consequences.**
+- Scrolling up stops at the top of the oldest chapter kept. There was never upward loading,
+  so this is only a shorter stretch. The navigation menu still reaches any chapter.
+- The bookmark is unaffected: it is read from the paragraphs on screen, which are never the
+  ones removed.
+
+---
+
+## D38 — Chapter titles have their own size
+
+**Status:** Adopted · 2026-10-08
+
+**Context.** The title (paragraph 1, D19) is drawn at 2em of the column, or 1.35em on touch, so
+it grew and shrank with the font-size slider. A reader who wants larger prose doesn't
+necessarily want a larger heading. The heading takes most of a phone screen at 2em.
+
+**Decision.** A second slider, `chapter title size` (60–200%), under `font size`, stored per
+device next to the other appearance values as `titleScale`. The two are **independent**. The
+title sits inside the column, whose size already carries `--reader-font-scale`, so the title's
+rule divides that factor back out and applies only its own:
+`calc(2em * var(--reader-title-scale, 1) / var(--reader-font-scale, 1))`. A title-size change
+goes through the same keep-the-bottom-paragraph path as a font-size change (D36), because a
+taller heading pushes the chapter down as well. Reset clears both.
+
+**Verified** on desktop: default 58 / 29px (title / text); text at 120% → 58 / 35; title at
+70% → 40 / 35; reset → 58 / 29 and storage cleared. On the phone, the slider shows up as a
+second row and the keyboard grid (D36) gives it h/l with no extra code.

@@ -15,7 +15,8 @@ import {
   type TranslationLanguageView,
 } from "./reading/connection.js";
 import { parseChapterNumber } from "./reading/chapterNumber.js";
-import { ProgressReporter } from "./reading/progressReporter.js";
+import { ProgressReporter, type ReadingPosition } from "./reading/progressReporter.js";
+import { ReadingAnchor } from "./reading/readingAnchor.js";
 import { SmoothScroller } from "./reading/scroller.js";
 import {
   readSelection,
@@ -63,9 +64,18 @@ const navigationMenu = navigationHost
   ? new NavigationMenu(navigationHost, navigationAffordance)
   : undefined;
 
+/** Puts the reader back on their line when the column is re-laid out under them (D36). */
+const readingAnchor = paragraphsContainer ? new ReadingAnchor(paragraphsContainer) : undefined;
+
+// The page decides where a reader lands — at their bookmark — so the browser's own memory of
+// the scroll offset, taken at some other width, must not be replayed on top of it.
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
 const progressReporter = paragraphsContainer
   ? new ProgressReporter(paragraphsContainer, (position) => {
     connection.reportProgress(novelName, position.chapterNumber, position.paragraphNumber);
+    // The reader has settled somewhere; whatever is now far enough above them can go (D37).
+    trimChaptersAbove();
   })
   : undefined;
 
@@ -136,8 +146,15 @@ const settingsMode: KeyMode = {
   onEnter: () => scroller.lock(),
   onExit: () => scroller.unlock(),
   bindings: bindings({
-    j: { description: "scroll down", run: () => settingsPanel?.scroll(1) },
-    k: { description: "scroll up", run: () => settingsPanel?.scroll(-1) },
+    j: { description: "next", run: () => settingsPanel?.move(1) },
+    k: { description: "previous", run: () => settingsPanel?.move(-1) },
+    ArrowDown: { description: "next", run: () => settingsPanel?.move(1) },
+    ArrowUp: { description: "previous", run: () => settingsPanel?.move(-1) },
+    h: { description: "left / smaller", run: () => settingsPanel?.across(-1) },
+    l: { description: "right / larger", run: () => settingsPanel?.across(1) },
+    ArrowLeft: { description: "left / smaller", run: () => settingsPanel?.across(-1) },
+    ArrowRight: { description: "right / larger", run: () => settingsPanel?.across(1) },
+    Enter: { description: "edit", run: () => settingsPanel?.activate() },
     c: { description: "close", run: () => settingsPanel?.close() },
     Escape: { description: "close", run: () => settingsPanel?.close() },
   }),
@@ -395,6 +412,72 @@ function appendChapter(chapter: ChapterView): void {
   }
 }
 
+// ---- Keeping the page short ----
+
+/**
+ * How many whole chapters are kept above the one being read. Enough to scroll back over a
+ * scene just finished; not so many that finding a word you saved means scrolling through a
+ * book's worth of page (D37).
+ */
+const chaptersKeptAbove = 2;
+
+/**
+ * The most chapters the page holds at once: the one being read, those kept above it, and the
+ * one already loaded below it.
+ */
+const maximumChaptersOnPage = chaptersKeptAbove + 2;
+
+/** The chapter numbers on the page, top to bottom. */
+function chaptersOnPage(): number[] {
+  const numbers: number[] = [];
+  for (const child of paragraphsContainer?.children ?? []) {
+    const number = Number((child as HTMLElement).dataset["chapter"]);
+    if (Number.isFinite(number) && numbers[numbers.length - 1] !== number) numbers.push(number);
+  }
+  return numbers;
+}
+
+/**
+ * Removes the chapters the reader has left well behind: everything more than
+ * {@link chaptersKeptAbove} chapters above the one they are reading, and — whatever happens —
+ * enough of the oldest to keep the page at {@link maximumChaptersOnPage}.
+ *
+ * Only ever chapters above the one being read, so everything removed is off the top of the
+ * screen. Taking it out would pull the text the reader is looking at upwards by its height;
+ * the paragraph on screen is measured before and after and the scroll offset is corrected by
+ * the difference, so nothing visible moves. (A browser's own scroll anchoring may already have
+ * corrected it, in which case the difference is nothing.)
+ */
+function trimChaptersAbove(): void {
+  if (!paragraphsContainer) return;
+
+  const position = progressReporter?.currentPosition();
+  if (!position) return;
+
+  const chapters = chaptersOnPage();
+  const excess = chapters.length - maximumChaptersOnPage;
+  const doomed = new Set(chapters.filter((chapter, index) =>
+    chapter < position.chapterNumber
+    && (chapter < position.chapterNumber - chaptersKeptAbove || index < excess)));
+  if (doomed.size === 0) return;
+
+  const anchor = paragraphsContainer.querySelector<HTMLElement>(
+    `[data-chapter="${position.chapterNumber}"][data-paragraph="${position.paragraphNumber}"]`,
+  );
+  const topBefore = anchor?.getBoundingClientRect().top;
+
+  for (const child of [...paragraphsContainer.children]) {
+    if (doomed.has(Number((child as HTMLElement).dataset["chapter"]))) child.remove();
+  }
+
+  if (anchor && topBefore !== undefined) {
+    const shift = anchor.getBoundingClientRect().top - topBefore;
+    if (shift !== 0) window.scrollBy(0, shift);
+  }
+
+  readingAnchor?.record();
+}
+
 async function loadAndAppend(chapterNumber: number): Promise<ChapterView> {
   const chapter = await connection.loadChapter(novelName, chapterNumber);
 
@@ -504,11 +587,13 @@ async function openNovelAt(
 
       if (scrollParagraphToBottom(chapterNumber, paragraphNumber)) {
         progressReporter?.markReported({ chapterNumber, paragraphNumber });
+        readingAnchor?.record();
         return;
       }
     }
 
     window.scrollTo({ top: 0 });
+    readingAnchor?.record();
   } finally {
     loadingChapter = false;
   }
@@ -833,12 +918,37 @@ function openNavigation(): void {
 // ---- Settings drawer ----
 
 /**
- * Keeps the reader on the paragraph they were reading while the font size changes under them:
- * every line below the top of the chapter moves when the font does.
+ * The paragraph that was at the bottom of the screen when a run of font-size changes began —
+ * a slider drag, or h/l held down. Kept for the whole run, so each step restores the same
+ * paragraph instead of whichever one the previous step's rounding left there.
  */
-function keepPositionAcrossResize(): void {
-  const position = progressReporter?.currentPosition();
-  if (position) scrollParagraphToBottom(position.chapterNumber, position.paragraphNumber);
+let fontChangeParagraph: ReadingPosition | undefined;
+let fontChangeSettleTimer: number | undefined;
+
+/** How long after the last font-size change the run counts as over, and is checked again. */
+const fontChangeSettleInMilliseconds = 200;
+
+/**
+ * Every font-size change goes through here (D36). The paragraph the reader has at the bottom
+ * of the screen — the one their bookmark records — is put back at the bottom straight after
+ * the change, and checked again once the layout has settled.
+ */
+function keepReadingPosition(change: () => void): void {
+  fontChangeParagraph ??= progressReporter?.currentPosition();
+  change();
+
+  const position = fontChangeParagraph;
+  if (!position) return;
+
+  scrollParagraphToBottom(position.chapterNumber, position.paragraphNumber);
+
+  if (fontChangeSettleTimer !== undefined) clearTimeout(fontChangeSettleTimer);
+  fontChangeSettleTimer = window.setTimeout(() => {
+    fontChangeSettleTimer = undefined;
+    fontChangeParagraph = undefined;
+    scrollParagraphToBottom(position.chapterNumber, position.paragraphNumber);
+    readingAnchor?.record();
+  }, fontChangeSettleInMilliseconds);
 }
 
 const emptyAssistant: AssistantSettingsView = { services: [], serviceId: null, model: null, keyHint: null, error: null };
@@ -853,12 +963,19 @@ const assistantSection = new AssistantSection(emptyAssistant, {
 
 const settingsAffordance = document.getElementById("settings-affordance");
 
+// As with the navigation hint: on a keyboard it is a label for the `c` key, not a control, so
+// it stays out of the tab order; on touch it is the `>` button and the only way in.
+if (settingsAffordance && !isTouchPrimary) {
+  settingsAffordance.setAttribute("aria-hidden", "true");
+  settingsAffordance.tabIndex = -1;
+}
+
 /**
  * The left-hand drawer (D35). Its sections are the list below: a new kind of setting is a new
  * {@link SettingsSection} added here, and the drawer scrolls once they outgrow the screen.
  */
 const settingsPanel = settingsAffordance instanceof HTMLButtonElement
-  ? new SettingsPanel(settingsAffordance, [new AppearanceSection(keepPositionAcrossResize), assistantSection], {
+  ? new SettingsPanel(settingsAffordance, [new AppearanceSection(keepReadingPosition), assistantSection], {
     onOpen: () => {
       // The drawer covers the page; nothing else should be left open behind it.
       if (definitionBox.isOpen) closeDefinitionBox();
@@ -913,12 +1030,6 @@ connection
     assistantSection.setSettings(session.assistant);
 
     await openNovelAt(session.novelName, session.chapterNumber, session.paragraphNumber, session.resuming);
-    window.addEventListener("orientationchange", () => {
-      const position = progressReporter?.currentPosition()
-      if (position) {
-        setTimeout(() => scrollParagraphToBottom(position.chapterNumber, position.paragraphNumber), 200)
-      }
-    }, false)
   })
   .catch((error: unknown) => {
     // `start` waits out an unreachable server rather than failing, so reaching here means the
@@ -951,6 +1062,8 @@ function loadNextChapter(chapterNumber: number): void {
   void loadAndAppend(chapterNumber)
     .then((chapter) => {
       if (chapter.failed) retryWhenConnected = () => loadNextChapter(chapterNumber);
+      // A new chapter below is the moment the page could exceed its limit (D37).
+      if (chapter.found) trimChaptersAbove();
     })
     .finally(() => {
       loadingChapter = false;

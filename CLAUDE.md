@@ -136,14 +136,18 @@ TypeScript, no framework and no bundler. Sources live in `WebApi/src/`; `tsc` em
 - `src/realTimeReader.ts` — entry point: wires the connection, the keyboard modes, the definition box and the navigation menu's screens. Paragraph **1** of a chapter is its title (`.data-chapter-title`) — paragraphs now arrive with their real numbers (D19). Every rendered `<p>` carries `data-chapter` and `data-paragraph`, which is how the bookmark is read back off the page.
 - `src/login.ts` — the login screen. Posts JSON and acts on the answer in place, so a rejected password does not cost a reload.
 - `src/input/keyboardRouter.ts` — a stack of named key modes, innermost first (D6). Opening the definition box or the menu pushes a mode; closing pops it. Text fields are left alone, so a focused filter input keeps its own keys.
-- `src/reading/` — `connection.ts` (the hub calls and their wire shapes), `progressReporter.ts` (the debounced bookmark), `scroller.ts` (j/k smooth scroll and the scroll lock), `selection.ts`, `underliner.ts`.
+- `src/reading/` — `connection.ts` (the hub calls and their wire shapes), `progressReporter.ts` (the debounced bookmark), `readingAnchor.ts` (records the top-of-screen paragraph while the column width is unchanged and restores it when the width changes, e.g. a rotation, even one made while the page was hidden (D36)), `scroller.ts` (j/k smooth scroll and the scroll lock), `selection.ts`, `underliner.ts`.
 - `src/ui/definitionBox.ts` — the definition panel: opened by the *request* showing `loading…`, filled in by the answer, after five seconds of silence, `still looking…` in dim when the connection is up and `connection lost` in red only when it is genuinely down (D33); senses paged with j/k, save/delete, and the translation block filled in by `t`. It is also
   the translation **settings form** (`e`, or `t` before anything is configured): email then a
   filtered language list, using the navigation menu's keys — type to narrow, Enter forward,
   Escape back (D31). The form is the one thing exempt from the fixed body height. Its size is fixed in CSS — three lines tall and `min(46ch, calc(100% - 24px))` wide — and must not be measured from the content or it shrinks against the right edge of the screen (D27).
-- `src/ui/settingsPanel.ts` — the left settings drawer (`>`/`<` button top-left, or `c`),
-  a scrolling stack of `SettingsSection`s; a new option is a new section in the list in
-  `realTimeReader.ts` (D35). `appearanceSection.ts` (font size, colours — per device, in
+- `src/ui/settingsPanel.ts` — the left settings drawer: `c`, or on touch the `>`/`<` button
+  top-left (on a keyboard that corner is a decorative `c settings` hint, like `n navigate`).
+  No animation. A scrolling stack of `SettingsSection`s; a new option is a new section in the
+  list in `realTimeReader.ts` (D35). From the keyboard it is a grid (D36): j/k between rows
+  (`.settings-row`, `.settings-actions`), h/l along a row (or the slider's value), Enter
+  edits/presses, Escape leaves a field and then closes the drawer. New sections get this free
+  as long as they build rows with `settingsRow`/`settingsActions`. `appearanceSection.ts` (font size, chapter-title size (independent, D38), colours — per device, in
   `localStorage`, applied pre-paint by an inline script in `index.html`) and
   `assistantSection.ts` (the reader's AI: service, model, key).
 - `src/interactive-select/module.ts` — `NavigationMenu`, the TUI panel opened with `n`. It is a **stack of `MenuScreen`s**, not one list: activating a row can `push` another screen, Escape pops (clearing an active filter first) and closes at the root. It renders the panel itself and handles no keys — the caller binds `move`/`activate`/`back` through the router — except inside the filter field, which owns its keystrokes while focused.
@@ -168,6 +172,12 @@ Three things to keep in mind when editing:
   then move. `waitForStableLayout()` awaits `document.fonts.ready` — and races the following
   frame against a timer, because `requestAnimationFrame` never fires in a background tab and
   waiting on it alone wedges the open (D23).
+
+- **The page holds at most four chapters** (D37): the one being read, two above, one below.
+  `trimChaptersAbove()` removes older ones when the reader settles and after each append,
+  correcting the scroll offset so nothing visible moves. A font-size change keeps the
+  *bottom* paragraph in place (`keepReadingPosition`), and a rotation keeps the *top* line
+  (`ReadingAnchor`). Both are deliberate (D36).
 
 - **Nothing in the reading column may be wider than the column.** Paragraphs carry
   `overflow-wrap: anywhere` — a chapter whose scene separator is 109 hyphens grew the phone's

@@ -14,6 +14,11 @@
 export interface AppearancePreferences {
   /** Multiplies the column's font size; 1 is the stylesheet's size. */
   readonly fontScale: number | null;
+  /**
+   * Multiplies the chapter title's size, independently of {@link fontScale}: moving one
+   * slider never moves the other's text (D38). 1 is the stylesheet's size.
+   */
+  readonly titleScale: number | null;
   /** `#rrggbb`. */
   readonly background: string | null;
   readonly text: string | null;
@@ -22,7 +27,7 @@ export interface AppearancePreferences {
 /** Read by the inline script in index.html as well — keep the two in step. */
 const storageKey = "novelreader.appearance";
 
-export const defaultAppearance: AppearancePreferences = { fontScale: null, background: null, text: null };
+export const defaultAppearance: AppearancePreferences = { fontScale: null, titleScale: null, background: null, text: null };
 
 /** What the form shows for a field left at its default. Mirror realTimeReader.css. */
 export const defaultBackground = "#1b1b1b";
@@ -64,6 +69,7 @@ export function loadAppearance(): AppearancePreferences {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
       fontScale: clampScale(parsed["fontScale"]),
+      titleScale: clampScale(parsed["titleScale"]),
       background: hexOrNull(parsed["background"]),
       text: hexOrNull(parsed["text"]),
     };
@@ -75,7 +81,10 @@ export function loadAppearance(): AppearancePreferences {
 
 /** Stores the preferences, or removes the entry entirely once everything is back at default. */
 export function saveAppearance(preferences: AppearancePreferences): void {
-  const isDefault = preferences.fontScale === null && preferences.background === null && preferences.text === null;
+  const isDefault = preferences.fontScale === null
+    && preferences.titleScale === null
+    && preferences.background === null
+    && preferences.text === null;
 
   try {
     if (isDefault) {
@@ -101,6 +110,7 @@ export function applyAppearance(preferences: AppearancePreferences): void {
   };
 
   set("--reader-font-scale", preferences.fontScale === null ? null : String(preferences.fontScale));
+  set("--reader-title-scale", preferences.titleScale === null ? null : String(preferences.titleScale));
   set("--reader-background", preferences.background);
   set("--reader-text", preferences.text);
 }

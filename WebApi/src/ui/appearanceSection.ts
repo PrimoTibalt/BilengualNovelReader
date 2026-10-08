@@ -14,53 +14,34 @@ import {
 import { settingsActions, settingsButton, settingsNote, settingsRow, type SettingsSection } from "./settingsPanel.js";
 
 /**
- * Font size, background and text colour. Every change is applied as it is made and stored at
+ * Font size, chapter title size, background and text colour. Every change is applied as it is made and stored at
  * once — there is no save button, because there is nothing a reader would want to type and
- * then not see. `reset` puts all three back to the stylesheet's defaults and forgets them.
+ * then not see. `reset` puts all four back to the stylesheet's defaults and forgets them.
  */
 export class AppearanceSection implements SettingsSection {
   readonly title = "appearance";
 
-  readonly #onFontScaleChanged: () => void;
+  readonly #keepReadingPosition: (change: () => void) => void;
   #preferences: AppearancePreferences = loadAppearance();
-  #scale: HTMLInputElement | undefined;
-  #scaleValue: HTMLElement | undefined;
+  #scaleFields: { refresh(): void }[] = [];
   #colourFields: { refresh(): void }[] = [];
   #note: HTMLElement | undefined;
 
   /**
-   * `onFontScaleChanged` runs after the column has been re-set at a new size, so the page can
-   * put the reader back on the paragraph they were reading — every line below the top of the
-   * chapter moves when the font does.
+   * `keepReadingPosition` wraps every change of font size. The page notes the paragraph the
+   * reader has at the bottom of the screen, lets the change happen, and puts that paragraph
+   * back at the bottom — every line below the top of the chapter moves when the font does.
    */
-  constructor(onFontScaleChanged: () => void) {
-    this.#onFontScaleChanged = onFontScaleChanged;
+  constructor(keepReadingPosition: (change: () => void) => void) {
+    this.#keepReadingPosition = keepReadingPosition;
     applyAppearance(this.#preferences);
   }
 
   build(container: HTMLElement): void {
-    // ---- font size ---------------------------------------------------------------
-    const scale = document.createElement("input");
-    scale.type = "range";
-    scale.className = "settings-slider";
-    scale.min = String(minimumFontScale);
-    scale.max = String(maximumFontScale);
-    scale.step = String(fontScaleStep);
-    scale.setAttribute("aria-label", "Font size");
-
-    const value = document.createElement("span");
-    value.className = "settings-slider__value";
-
-    scale.addEventListener("input", () => {
-      const chosen = Number(scale.value);
-      // Back at 100% is the default, not a preference that happens to equal it.
-      this.#update({ fontScale: Math.abs(chosen - 1) < fontScaleStep / 2 ? null : chosen });
-      this.#onFontScaleChanged();
-    });
-
-    container.appendChild(settingsRow("font size", scale, value));
-    this.#scale = scale;
-    this.#scaleValue = value;
+    // ---- sizes -------------------------------------------------------------------
+    // Two sliders, each independent of the other (D38): the text, and the chapter titles.
+    container.appendChild(this.#scaleRow("font size", "fontScale"));
+    container.appendChild(this.#scaleRow("chapter title size", "titleScale"));
 
     // ---- colours -----------------------------------------------------------------
     container.appendChild(this.#colourRow("background", "background", defaultBackground));
@@ -72,8 +53,7 @@ export class AppearanceSection implements SettingsSection {
 
     container.appendChild(settingsActions(
       settingsButton("reset to defaults", () => {
-        this.#update(defaultAppearance);
-        this.#onFontScaleChanged();
+        this.#keepReadingPosition(() => this.#update(defaultAppearance));
         this.refresh();
       }),
     ));
@@ -84,12 +64,47 @@ export class AppearanceSection implements SettingsSection {
   refresh(): void {
     this.#preferences = loadAppearance();
 
-    const scale = this.#preferences.fontScale ?? 1;
-    if (this.#scale) this.#scale.value = String(scale);
-    this.#renderScale(scale);
-
+    for (const field of this.#scaleFields) field.refresh();
     for (const field of this.#colourFields) field.refresh();
     this.#showNote("");
+  }
+
+  /**
+   * A size slider with its percentage beside it. Every change goes through the page's
+   * `keepReadingPosition`, the title's included: a bigger title pushes the chapter down too.
+   */
+  #scaleRow(caption: string, key: "fontScale" | "titleScale"): HTMLElement {
+    const scale = document.createElement("input");
+    scale.type = "range";
+    scale.className = "settings-slider";
+    scale.min = String(minimumFontScale);
+    scale.max = String(maximumFontScale);
+    scale.step = String(fontScaleStep);
+    scale.setAttribute("aria-label", caption);
+
+    const value = document.createElement("span");
+    value.className = "settings-slider__value";
+
+    const render = (): void => {
+      value.textContent = `${Math.round((this.#preferences[key] ?? 1) * 100)}%`;
+    };
+
+    scale.addEventListener("input", () => {
+      const chosen = Number(scale.value);
+      // Back at 100% is the default, not a preference that happens to equal it.
+      this.#keepReadingPosition(() =>
+        this.#update({ [key]: Math.abs(chosen - 1) < fontScaleStep / 2 ? null : chosen }));
+      render();
+    });
+
+    this.#scaleFields.push({
+      refresh: () => {
+        scale.value = String(this.#preferences[key] ?? 1);
+        render();
+      },
+    });
+
+    return settingsRow(caption, scale, value);
   }
 
   /**
@@ -159,12 +174,7 @@ export class AppearanceSection implements SettingsSection {
     this.#preferences = { ...this.#preferences, ...change };
     applyAppearance(this.#preferences);
     saveAppearance(this.#preferences);
-    this.#renderScale(this.#preferences.fontScale ?? 1);
     this.#showNote("");
-  }
-
-  #renderScale(scale: number): void {
-    if (this.#scaleValue) this.#scaleValue.textContent = `${Math.round(scale * 100)}%`;
   }
 
   #showNote(text: string): void {
