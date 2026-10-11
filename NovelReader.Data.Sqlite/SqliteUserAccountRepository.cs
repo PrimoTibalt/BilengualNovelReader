@@ -10,36 +10,85 @@ namespace NovelReader.Data.Sqlite
 	/// migration framework would be more moving parts than the thing it manages.
 	/// </summary>
 	internal sealed class SqliteUserAccountRepository(string connectionString)
-		: IUserAccountRepository, ITranslationSettingsStore, IAssistantSettingsStore
+		: IUserAccountRepository, IInviteStore, ITranslationSettingsStore, IAssistantSettingsStore
 	{
 		/// <summary>SQLite's generic constraint-violation result code.</summary>
 		private const int SqliteConstraint = 19;
 
-		public async Task<AccountResult> CreateAsync(string userName, string passwordHash, CancellationToken cancellationToken = default)
+		public async Task<AccountResult> CreateAsync(
+			string userName,
+			string passwordHash,
+			string inviteCodeHash,
+			DateTimeOffset now,
+			CancellationToken cancellationToken = default)
 		{
 			await using SqliteConnection connection = new(connectionString);
 			await connection.OpenAsync(cancellationToken);
 
+			// One transaction, so the invite is spent exactly when the account appears (D42).
+			await using SqliteTransaction transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+			await using SqliteCommand spend = connection.CreateCommand();
+			spend.Transaction = transaction;
+			// A conditional UPDATE rather than read-then-write, so two sign-ups racing for one
+			// code cannot both see it unspent.
+			spend.CommandText = """
+				UPDATE invites
+				SET used_by = $userName, used_at = $now
+				WHERE code_hash = $codeHash AND used_at IS NULL AND expires_at > $now;
+				""";
+			spend.Parameters.AddWithValue("$userName", userName);
+			spend.Parameters.AddWithValue("$now", now.ToUnixTimeSeconds());
+			spend.Parameters.AddWithValue("$codeHash", inviteCodeHash);
+
+			if (await spend.ExecuteNonQueryAsync(cancellationToken) != 1)
+			{
+				await transaction.RollbackAsync(cancellationToken);
+				return AccountResult.Failed(AccountFailure.InviteInvalid);
+			}
+
 			await using SqliteCommand command = connection.CreateCommand();
+			command.Transaction = transaction;
 			command.CommandText = """
 				INSERT INTO accounts (user_name, password_hash, created_at)
 				VALUES ($userName, $passwordHash, $createdAt);
 				""";
 			command.Parameters.AddWithValue("$userName", userName);
 			command.Parameters.AddWithValue("$passwordHash", passwordHash);
-			command.Parameters.AddWithValue("$createdAt", DateTime.UtcNow.ToString("O"));
+			command.Parameters.AddWithValue("$createdAt", now.UtcDateTime.ToString("O"));
 
 			try
 			{
 				await command.ExecuteNonQueryAsync(cancellationToken);
-				return AccountResult.Success(userName);
 			}
 			catch (SqliteException exception) when (exception.SqliteErrorCode == SqliteConstraint)
 			{
 				// The unique index is the only thing that can settle this: checking first and
 				// inserting second leaves a window where two sign-ups both see the name free.
+				// Rolled back, the invite is unspent and can be tried with another name.
+				await transaction.RollbackAsync(cancellationToken);
 				return AccountResult.Failed(AccountFailure.UserNameTaken);
 			}
+
+			await transaction.CommitAsync(cancellationToken);
+			return AccountResult.Success(userName);
+		}
+
+		public async Task CreateInviteAsync(string codeHash, DateTimeOffset createdAt, DateTimeOffset expiresAt, CancellationToken cancellationToken = default)
+		{
+			await using SqliteConnection connection = new(connectionString);
+			await connection.OpenAsync(cancellationToken);
+
+			await using SqliteCommand command = connection.CreateCommand();
+			command.CommandText = """
+				INSERT INTO invites (code_hash, created_at, expires_at)
+				VALUES ($codeHash, $createdAt, $expiresAt);
+				""";
+			command.Parameters.AddWithValue("$codeHash", codeHash);
+			command.Parameters.AddWithValue("$createdAt", createdAt.ToUnixTimeSeconds());
+			command.Parameters.AddWithValue("$expiresAt", expiresAt.ToUnixTimeSeconds());
+
+			await command.ExecuteNonQueryAsync(cancellationToken);
 		}
 
 		public async Task<UserAccount?> FindAsync(string userName, CancellationToken cancellationToken = default)
@@ -219,6 +268,16 @@ namespace NovelReader.Data.Sqlite
 					user_name     TEXT NOT NULL COLLATE NOCASE PRIMARY KEY,
 					password_hash TEXT NOT NULL,
 					created_at    TEXT NOT NULL
+				);
+
+				-- Sign-up invitations (D42). Only the code's SHA-256 is kept; times are Unix seconds.
+				-- Spent rows stay, as the record of who came in on which invite.
+				CREATE TABLE IF NOT EXISTS invites (
+					code_hash  TEXT    NOT NULL PRIMARY KEY,
+					created_at INTEGER NOT NULL,
+					expires_at INTEGER NOT NULL,
+					used_by    TEXT    NULL,
+					used_at    INTEGER NULL
 				);
 				""";
 			command.ExecuteNonQuery();

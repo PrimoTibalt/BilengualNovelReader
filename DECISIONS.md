@@ -1481,8 +1481,7 @@ floor is the sign-up one. A wrong current password answers `current-wrong` and i
 warning. Both fields are cleared and hidden again whenever the drawer opens.
 
 **Consequences and known gaps.**
-- Wrong current passwords count towards the sign-in lock (D41), so an open session is not a
-  way round it.
+- Wrong current passwords are limited too (D41), on a count of their own.
 - Other devices stay signed in after a change: the cookie carries no security stamp, so there
   is nothing to invalidate them with. Signing everyone out means rotating the key ring (D35).
 
@@ -1491,8 +1490,9 @@ warning. Both fields are cleared and hidden again whenever the drawer opens.
 **Decision.** Five wrong passwords for a username lock it for five minutes. If the guessing
 carries on after the lock runs out, the next five earn ten minutes, then 20, 40 … up to a
 day. A right password clears the record, and so does a day with no attempts, counted from
-the end of the last lock. Sign-in and the password change's current-password check (D40)
-share one count.
+the end of the last lock. The password change's current-password check (D40) has the same
+rules on a count of its own. A shared count would let anyone at the sign-in form stop the
+signed-in owner from changing the password, just when they most need to.
 
 **How.** `SignInThrottle` (Domain, in memory, keyed case-insensitively like the accounts
 table). `AccountService` claims an attempt *before* checking the password, and a success
@@ -1520,6 +1520,71 @@ passwords. Try again in N minutes."; the hub answers `locked` with the minutes.
 - The lock is per name, not per address, so trying one common password against many names
   is not slowed at all. An address-based limit (ASP.NET's rate limiter) would be the next layer.
 - In memory: a restart forgets every lock. Tracked names are swept once there are more than
-  10,000, removing the ones that have gone quiet.
+  10,000, removing the ones that have gone quiet — at most once a minute, or a table of
+  10,000 names that are all still recent would be walked on every attempt.
 - Sign-up still says "That username is already taken." — it has to, for a sign-up to make
   sense — so the throttle stops name discovery through sign-in, not through sign-up.
+
+## D42 — Hardening after the security audit
+
+An audit of the code and of the live site at primotibalt.top/reader found nothing open, but
+several missing layers. This adds them.
+
+**Invite-only sign-up.** A new account needs an invite code. You create one on the server
+with `NovelReader invite`, which prints the code and the accounts database it wrote to. Run it
+from the app's directory with the app's environment, or it opens a different database.
+- A code is 12 characters from an alphabet with no look-alikes (`K7QM-X2PD-9RTA`). It works
+  once and expires after 24 hours. Case, dashes and spaces are ignored when it is typed.
+- Only its SHA-256 is stored, in the `invites` table. Spent rows record who used them.
+- The invite is spent in the same SQLite transaction that creates the account, by a
+  conditional `UPDATE`, so two sign-ups cannot both use one code. A taken name rolls the
+  transaction back and leaves the code unspent.
+- The invite is checked before the name, so only someone holding a good code can learn that
+  a name is taken. Sign-up no longer reveals which names exist to everyone else.
+
+**Limits per client address** (`AuthRateLimits`, ASP.NET's rate limiter): sign-in 10 a
+minute, sign-up 5 an hour. They answer 429 with `Retry-After` and a message the login page
+shows. They stop one address guessing across many names, which the per-name lock (D41)
+cannot, and stop it keeping the CPU busy with PBKDF2. Passwords are capped at 128
+characters and `/auth` bodies at 4 KB.
+
+**Novel names must be slugs** (`NovelSlug`: `^[a-z0-9][a-z0-9-]{0,119}$`). The name becomes
+a path on the source site and a Mongo collection name. Unchecked, a signed-in reader could
+have the server fetch any path on that site, or create collections without end. The hub
+checks it in `LoadChapter`, `GetNovelProgress`, `ReportProgress` and `SaveWord`, and
+`ChapterPreparationService` checks again where the name is used.
+
+**Browser protections** (`SecurityHeaders`):
+- A Content-Security-Policy allowing this origin only. It is the backstop for the one place
+  the page writes HTML (D3). The pre-paint inline script in `index.html` is allowed by its
+  hash, computed at start-up from the file, so editing that script needs nothing else
+  changed.
+- `frame-ancestors 'none'` and `X-Frame-Options: DENY`, `nosniff`,
+  `Referrer-Policy: same-origin`, a Permissions-Policy, and
+  `Cross-Origin-Opener-Policy: same-origin`.
+- Verified in headless Chromium: both pages load with no CSP violations, the inline script
+  applies the stored appearance, and the hub's WebSocket connects.
+
+**Same-origin requests only** (`SameOriginRequests`). The hub, and any request other than
+GET or HEAD, is refused with 403 if its `Origin` names another origin. SameSite=Lax keeps
+the cookie off requests from other sites, but not from other pages on the same site
+(`/cv`, subdomains).
+
+**Smaller items:**
+- The auth cookie is `Secure` always outside Development.
+- Sign-out is POST-only; the page posts and then goes to the login screen.
+- No `UseHsts`: nginx's header covers the domain, and the app's shorter one contradicted it.
+- `AllowedHosts` is `primotibalt.top;localhost;127.0.0.1;[::1]`.
+- `X-Forwarded-Prefix` now goes through the framework's forwarded-headers handling, which
+  trusts only the loopback proxy. It replaces a hand-written middleware that accepted the
+  header from anyone and kept only the first character of a prefix that lacked a leading
+  slash.
+
+**Consequences and known gaps.**
+- If nginx ever forwards a `Host` other than those listed, every request gets 400. Add the
+  name to `AllowedHosts`.
+- The rate limits rely on nginx's `X-Forwarded-For`. If nginx stopped sending it, every
+  client would share one budget, so 10 sign-ins a minute for everyone.
+- Rate-limit counters, like the D41 locks, are in memory and reset on restart.
+- Not done: moving the reader to its own subdomain (it still shares an origin with `/cv`),
+  revoking sessions, and encrypting the key ring at rest.

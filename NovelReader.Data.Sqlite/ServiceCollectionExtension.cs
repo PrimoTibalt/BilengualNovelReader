@@ -26,10 +26,10 @@ namespace NovelReader.Data.Sqlite
 			SqliteUserAccountRepository repository = new(connectionString);
 
 			services.AddSingleton<IUserAccountRepository>(repository);
+			services.AddSingleton<IInviteStore>(repository);
 			services.AddSingleton<ITranslationSettingsStore>(repository);
 			services.AddSingleton<IAssistantSettingsStore>(repository);
 			services.TryAddSingleton(TimeProvider.System);
-			services.AddSingleton<SignInThrottle>();
 			services.AddSingleton<AccountService>();
 		}
 

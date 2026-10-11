@@ -747,13 +747,24 @@ function rootScreen(): MenuScreen {
       },
       {
         label: "Sign out",
-        run: () => {
-          const pathBase = document.querySelector<HTMLMetaElement>('meta[name="app-base"]') ?? { content: '' } as HTMLMetaElement;
-          window.location.href = `${pathBase.content}auth/signout`;
-        },
+        run: () => void signOut(),
       },
     ],
   };
+}
+
+/**
+ * Sign-out is a POST (D42) — as a link, any page on the web could sign the reader out. The
+ * login screen comes next either way: if the request failed, the cookie may still be there,
+ * and the login screen sends a signed-in reader straight back.
+ */
+async function signOut(): Promise<void> {
+  const pathBase = document.querySelector<HTMLMetaElement>('meta[name="app-base"]')?.content ?? "";
+  try {
+    await fetch(`${pathBase}auth/signout`, { method: "POST", credentials: "same-origin" });
+  } finally {
+    window.location.href = `${pathBase}Login`;
+  }
 }
 
 function chapterScreen(): MenuScreen {

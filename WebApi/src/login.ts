@@ -20,6 +20,8 @@ const form = document.getElementById("login-form") as HTMLFormElement | null;
 const userNameInput = document.getElementById("username") as HTMLInputElement | null;
 const passwordInput = document.getElementById("password") as HTMLInputElement | null;
 const submitButton = document.getElementById("submit") as HTMLButtonElement | null;
+const inviteField = document.getElementById("invite-field");
+const inviteInput = document.getElementById("invite") as HTMLInputElement | null;
 const messageElement = document.getElementById("message");
 const modeCaption = document.getElementById("mode-caption");
 const signInTab = document.getElementById("tab-signin") as HTMLButtonElement | null;
@@ -55,7 +57,10 @@ function setMode(next: Mode): void {
     passwordInput.autocomplete = next === "signup" ? "new-password" : "current-password";
   }
 
-  setMessage(next === "signup" ? "Pick a username and a password of at least 8 characters." : "");
+  // New readers come in by invitation (D42); the code is asked for on sign-up only.
+  if (inviteField) inviteField.hidden = next !== "signup";
+
+  setMessage(next === "signup" ? "Pick a username, a password of at least 8 characters, and enter your invite code." : "");
 }
 
 function setSubmitting(value: boolean): void {
@@ -69,9 +74,17 @@ async function submit(): Promise<void> {
   const userName = userNameInput?.value.trim() ?? "";
   const password = passwordInput?.value ?? "";
 
+  const inviteCode = mode === "signup" ? (inviteInput?.value.trim() ?? "") : "";
+
   if (userName.length === 0 || password.length === 0) {
     setMessage("Both a username and a password are needed.", "error");
     (userName.length === 0 ? userNameInput : passwordInput)?.focus();
+    return;
+  }
+
+  if (mode === "signup" && inviteCode.length === 0) {
+    setMessage("Signing up needs an invite code.", "error");
+    inviteInput?.focus();
     return;
   }
 
@@ -83,7 +96,7 @@ async function submit(): Promise<void> {
     const response = await fetch(`${pathBase.content}auth/${mode}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userName, password }),
+      body: JSON.stringify(mode === "signup" ? { userName, password, inviteCode } : { userName, password }),
       credentials: "same-origin",
     });
 

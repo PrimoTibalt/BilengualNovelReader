@@ -7,6 +7,9 @@ namespace NovelReader.Domain.RealTimeReader.Accounts
 		UserNameTaken,
 		UserNameInvalid,
 		PasswordTooShort,
+		PasswordTooLong,
+		/// <summary>No such invite, already used, or expired — deliberately not said which (D42).</summary>
+		InviteInvalid,
 		UnknownUserOrPassword,
 		/// <summary>A password change whose current password did not match.</summary>
 		CurrentPasswordWrong,
@@ -60,6 +63,8 @@ namespace NovelReader.Domain.RealTimeReader.Accounts
 			AccountFailure.UserNameInvalid =>
 				"Usernames are 3–32 characters: letters, digits, dot, dash or underscore.",
 			AccountFailure.PasswordTooShort => "Passwords must be at least 8 characters.",
+			AccountFailure.PasswordTooLong => "Passwords can be at most 128 characters.",
+			AccountFailure.InviteInvalid => "That invite code is not valid. Codes work once, for 24 hours.",
 			AccountFailure.UnknownUserOrPassword => "Unknown username or password.",
 			AccountFailure.CurrentPasswordWrong => "The current password is not right.",
 			AccountFailure.LockedOut => RetryAfterMinutes == 1

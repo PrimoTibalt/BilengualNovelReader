@@ -21,7 +21,8 @@ namespace NovelReader.Tests
 		public SignInThrottleTests()
 		{
 			throttle = new SignInThrottle(clock);
-			service = new AccountService(new InMemoryUserAccountRepository(), throttle);
+			InMemoryUserAccountRepository repository = new();
+			service = new AccountService(repository, repository, clock);
 		}
 
 		private async Task FailSignInsAsync(string userName, int times)
@@ -162,7 +163,7 @@ namespace NovelReader.Tests
 		}
 
 		[Fact]
-		public async Task Wrong_current_passwords_count_towards_the_sign_in_lock()
+		public async Task Wrong_current_passwords_lock_the_password_change_but_not_sign_in()
 		{
 			await service.SignUpAsync("anton", "a-good-password");
 
@@ -174,7 +175,19 @@ namespace NovelReader.Tests
 
 			Assert.Equal(AccountFailure.LockedOut,
 				(await service.ChangePasswordAsync("anton", "a-good-password", "a-new-password")).Failure);
+			Assert.True((await service.SignInAsync("anton", "a-good-password")).Succeeded);
+		}
+
+		[Fact]
+		public async Task A_sign_in_lock_does_not_stop_the_owner_changing_the_password()
+		{
+			await service.SignUpAsync("anton", "a-good-password");
+			await FailSignInsAsync("anton", SignInThrottle.AttemptsBeforeLock);
 			Assert.Equal(AccountFailure.LockedOut, (await service.SignInAsync("anton", "a-good-password")).Failure);
+
+			AccountResult changed = await service.ChangePasswordAsync("anton", "a-good-password", "a-new-password");
+
+			Assert.True(changed.Succeeded);
 		}
 
 		[Fact]

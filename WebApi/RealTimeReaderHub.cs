@@ -123,7 +123,7 @@ namespace NovelReader
 		public async Task<ReadingSessionResponse> GetNovelProgress(string novelName)
 		{
 			string userName = CallerName;
-			ReadingProgress? progress = string.IsNullOrWhiteSpace(novelName)
+			ReadingProgress? progress = !NovelSlug.IsValid(novelName)
 				? null
 				: await readingProgressStore.GetAsync(userName, novelName, Context.ConnectionAborted);
 
@@ -154,7 +154,8 @@ namespace NovelReader
 		{
 			string userName = CallerName;
 
-			if (string.IsNullOrWhiteSpace(novelName) || chapterNumber < 1)
+			// Not a slug, not looked for: the name becomes a URL and a collection (D42).
+			if (!NovelSlug.IsValid(novelName) || chapterNumber < 1)
 			{
 				return new ChapterResponse(novelName ?? string.Empty, chapterNumber, [], false);
 			}
@@ -185,7 +186,9 @@ namespace NovelReader
 		/// </summary>
 		public async Task ReportProgress(string novelName, int chapterNumber, int paragraphNumber)
 		{
-			if (string.IsNullOrWhiteSpace(novelName) || chapterNumber < 1 || paragraphNumber < 1)
+			// A bookmark on a made-up name would put it in the library, and the library looks
+			// every novel up in the source site's catalogue (D42).
+			if (!NovelSlug.IsValid(novelName) || chapterNumber < 1 || paragraphNumber < 1)
 			{
 				return;
 			}
@@ -396,6 +399,7 @@ namespace NovelReader
 				return new PasswordChangeResponse(result.Failure switch
 				{
 					AccountFailure.PasswordTooShort => PasswordChangeResponse.TooShort,
+					AccountFailure.PasswordTooLong => PasswordChangeResponse.TooLong,
 					AccountFailure.CurrentPasswordWrong => PasswordChangeResponse.CurrentWrong,
 					_ => PasswordChangeResponse.Failed
 				});
@@ -425,6 +429,11 @@ namespace NovelReader
 		public async Task SaveWord(string novelName, string surfaceForm)
 		{
 			string userName = CallerName;
+
+			if (!NovelSlug.IsValid(novelName))
+			{
+				return;
+			}
 
 			string normalizedTerm = TermNormalizer.Normalize(surfaceForm);
 			if (normalizedTerm.Length == 0)

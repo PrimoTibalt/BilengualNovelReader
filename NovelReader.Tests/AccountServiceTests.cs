@@ -4,7 +4,11 @@ namespace NovelReader.Tests
 {
 	public class AccountServiceTests
 	{
-		private static AccountService Build() => new(new InMemoryUserAccountRepository(), new SignInThrottle(TimeProvider.System));
+		private static AccountService Build()
+		{
+			InMemoryUserAccountRepository repository = new();
+			return new(repository, repository, TimeProvider.System);
+		}
 
 		[Theory]
 		[InlineData("ab")]                                  // too short

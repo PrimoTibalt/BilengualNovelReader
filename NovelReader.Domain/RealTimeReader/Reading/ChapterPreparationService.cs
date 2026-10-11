@@ -61,6 +61,13 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 
         private async Task<IChapter> GetOrCreateChapterAsync(string novelName, int chapterNumber)
         {
+            // The hub checks this already; here because this is where the name turns into a
+            // collection and a URL, and nothing should reach that without passing it (D42).
+            if (!NovelSlug.IsValid(novelName))
+            {
+                throw new ArgumentException($"'{novelName}' is not a novel name.", nameof(novelName));
+            }
+
             ICollectionOfChapters chaptersCollection =
                 await novelRepository.GetCollectionOfChapters(novelName);
             IFilteredCollection filtered = await chaptersCollection.FilterByChapter(chapterNumber);

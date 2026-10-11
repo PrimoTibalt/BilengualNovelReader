@@ -4,8 +4,9 @@ import { settingsActions, settingsButton, settingsNote, settingsRow, type Settin
 /** Undefined when the server could not be reached. */
 export type ChangePassword = (currentPassword: string, newPassword: string) => Promise<PasswordChangeResult | undefined>;
 
-/** The server's floor; checked here only to save a round trip. */
+/** The server's limits; checked here only to save a round trip. */
 const minimumPasswordLength = 8;
+const maximumPasswordLength = 128;
 
 const svgNamespace = "http://www.w3.org/2000/svg";
 
@@ -42,6 +43,8 @@ function describeError(code: string, retryAfterMinutes: number | null = null): s
         : `Too many wrong passwords. Try again in ${retryAfterMinutes} minutes.`;
     case "too-short":
       return `Passwords must be at least ${minimumPasswordLength} characters.`;
+    case "too-long":
+      return `Passwords can be at most ${maximumPasswordLength} characters.`;
     case "current-wrong":
       return "The current password is not right.";
     default:
@@ -147,8 +150,8 @@ export class PasswordSection implements SettingsSection {
       current.field.focus();
       return;
     }
-    if (next.field.value.length < minimumPasswordLength) {
-      this.#showNote(describeError("too-short"));
+    if (next.field.value.length < minimumPasswordLength || next.field.value.length > maximumPasswordLength) {
+      this.#showNote(describeError(next.field.value.length < minimumPasswordLength ? "too-short" : "too-long"));
       next.field.focus();
       return;
     }

@@ -101,6 +101,11 @@ body {
 	padding: 0.35em 0;
 }
 
+/* The invite code row is sign-up only; `display: flex` above would otherwise show it. */
+.login-field[hidden] {
+	display: none;
+}
+
 .login-field__label {
 	width: 9ch;
 	flex: none;

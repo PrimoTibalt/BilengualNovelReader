@@ -19,7 +19,7 @@ namespace NovelReader.Tests
 			string connectionString = $"Data Source={databasePath}";
 			SqliteUserAccountRepository.EnsureCreated(connectionString);
 			repository = new SqliteUserAccountRepository(connectionString);
-			service = new AccountService(repository, new SignInThrottle(TimeProvider.System));
+			service = new AccountService(repository, repository, TimeProvider.System);
 		}
 
 		public void Dispose()
@@ -53,6 +53,31 @@ namespace NovelReader.Tests
 			Assert.True((await service.SignInAsync("Anton", "a-new-password")).Succeeded);
 			Assert.False((await service.SignInAsync("Anton", "a-good-password")).Succeeded);
 			Assert.False(await repository.UpdatePasswordHashAsync("nobody", "x"));
+		}
+
+		[Fact]
+		public async Task An_invite_is_spent_with_the_account_and_only_then()
+		{
+			(string code, _) = await service.CreateInviteAsync();
+			await service.SignUpAsync("anton", "a-good-password");
+
+			// A taken name rolls the transaction back, so the code is still good after it.
+			Assert.Equal(AccountFailure.UserNameTaken, (await service.SignUpAsync("ANTON", "a-good-password", code)).Failure);
+			Assert.True((await service.SignUpAsync("someone", "a-good-password", code)).Succeeded);
+			Assert.Equal(AccountFailure.InviteInvalid, (await service.SignUpAsync("third", "a-good-password", code)).Failure);
+			Assert.Null(await repository.FindAsync("third"));
+		}
+
+		[Fact]
+		public async Task An_expired_invite_is_refused_by_the_database()
+		{
+			DateTimeOffset now = DateTimeOffset.UtcNow;
+			string hash = InviteCodes.Hash("AAAA-BBBB-CCCC")!;
+			await repository.CreateInviteAsync(hash, now - TimeSpan.FromDays(2), now - TimeSpan.FromDays(1));
+
+			AccountResult result = await repository.CreateAsync("anton", PasswordHasher.Hash("a-good-password"), hash, now);
+
+			Assert.Equal(AccountFailure.InviteInvalid, result.Failure);
 		}
 
 		[Fact]

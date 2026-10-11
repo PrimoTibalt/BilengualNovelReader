@@ -7,23 +7,54 @@ namespace NovelReader.Tests
 	/// Account storage without a file. Keyed case-insensitively, matching the COLLATE NOCASE
 	/// primary key the SQLite table uses, so the two agree on what "taken" means.
 	/// </summary>
-	internal sealed class InMemoryUserAccountRepository : IUserAccountRepository
+	internal sealed class InMemoryUserAccountRepository : IUserAccountRepository, IInviteStore
 	{
 		private readonly ConcurrentDictionary<string, UserAccount> accounts =
 			new(StringComparer.OrdinalIgnoreCase);
 
-		public Task<AccountResult> CreateAsync(string userName, string passwordHash, CancellationToken cancellationToken = default)
-		{
-			UserAccount account = new()
-			{
-				UserName = userName,
-				PasswordHash = passwordHash,
-				CreatedAtUtc = DateTime.UtcNow
-			};
+		private sealed record Invite(DateTimeOffset ExpiresAt, string? UsedBy);
 
-			return Task.FromResult(accounts.TryAdd(userName, account)
-				? AccountResult.Success(userName)
-				: AccountResult.Failed(AccountFailure.UserNameTaken));
+		private readonly Dictionary<string, Invite> invites = [];
+
+		public Task CreateInviteAsync(string codeHash, DateTimeOffset createdAt, DateTimeOffset expiresAt, CancellationToken cancellationToken = default)
+		{
+			lock (invites)
+			{
+				invites.Add(codeHash, new Invite(expiresAt, null));
+			}
+			return Task.CompletedTask;
+		}
+
+		/// <summary>Both or neither, as the SQLite transaction does.</summary>
+		public Task<AccountResult> CreateAsync(
+			string userName,
+			string passwordHash,
+			string inviteCodeHash,
+			DateTimeOffset now,
+			CancellationToken cancellationToken = default)
+		{
+			lock (invites)
+			{
+				if (!invites.TryGetValue(inviteCodeHash, out Invite? invite) || invite.UsedBy is not null || invite.ExpiresAt <= now)
+				{
+					return Task.FromResult(AccountResult.Failed(AccountFailure.InviteInvalid));
+				}
+
+				UserAccount account = new()
+				{
+					UserName = userName,
+					PasswordHash = passwordHash,
+					CreatedAtUtc = now.UtcDateTime
+				};
+
+				if (!accounts.TryAdd(userName, account))
+				{
+					return Task.FromResult(AccountResult.Failed(AccountFailure.UserNameTaken));
+				}
+
+				invites[inviteCodeHash] = invite with { UsedBy = userName };
+				return Task.FromResult(AccountResult.Success(userName));
+			}
 		}
 
 		public Task<UserAccount?> FindAsync(string userName, CancellationToken cancellationToken = default)

@@ -7,11 +7,21 @@ namespace NovelReader.Domain.RealTimeReader.Accounts
 	public interface IUserAccountRepository
 	{
 		/// <summary>
-		/// Creates an account. Returns <see cref="AccountFailure.UserNameTaken"/> rather than
-		/// throwing when the name is gone — the check and the insert race, so uniqueness has
-		/// to be settled by the database's own constraint.
+		/// Spends the invite and creates the account, both or neither (D42). Answers
+		/// <see cref="AccountFailure.InviteInvalid"/> when the code is unknown, spent or past
+		/// <paramref name="now"/>, and <see cref="AccountFailure.UserNameTaken"/> — leaving the
+		/// invite unspent — when the name is gone. The invite is checked first, so a name can
+		/// only be found to be taken by someone holding a good code.
+		///
+		/// Uniqueness is the database's constraint to settle, not a check beforehand: the check
+		/// and the insert would race.
 		/// </summary>
-		Task<AccountResult> CreateAsync(string userName, string passwordHash, CancellationToken cancellationToken = default);
+		Task<AccountResult> CreateAsync(
+			string userName,
+			string passwordHash,
+			string inviteCodeHash,
+			DateTimeOffset now,
+			CancellationToken cancellationToken = default);
 
 		Task<UserAccount?> FindAsync(string userName, CancellationToken cancellationToken = default);
 

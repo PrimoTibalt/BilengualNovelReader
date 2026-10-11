@@ -35,6 +35,15 @@ namespace NovelReader.Domain.RealTimeReader.Accounts
 		/// </summary>
 		private const int SweepAbove = 10_000;
 
+		/// <summary>
+		/// At most one sweep per this. Names a sweep cannot remove — tried in the last day — would
+		/// otherwise have every attempt walk the whole table once there are more than
+		/// <see cref="SweepAbove"/> of them.
+		/// </summary>
+		private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(1);
+
+		private long nextSweepTicks;
+
 		private sealed class Record
 		{
 			public int Attempts;
@@ -68,7 +77,7 @@ namespace NovelReader.Domain.RealTimeReader.Accounts
 				lockedFor = Claim(record, now);
 			}
 
-			if (records.Count > SweepAbove)
+			if (records.Count > SweepAbove && TryTakeSweep(now))
 			{
 				Sweep(now);
 			}
@@ -122,6 +131,14 @@ namespace NovelReader.Domain.RealTimeReader.Accounts
 			int doublings = Math.Min(locks - 1, 9);
 			TimeSpan duration = FirstLock * (1 << doublings);
 			return duration < LongestLock ? duration : LongestLock;
+		}
+
+		/// <summary>True for exactly one caller per <see cref="SweepInterval"/>.</summary>
+		private bool TryTakeSweep(DateTimeOffset now)
+		{
+			long due = Interlocked.Read(ref nextSweepTicks);
+			return now.UtcTicks >= due
+				&& Interlocked.CompareExchange(ref nextSweepTicks, (now + SweepInterval).UtcTicks, due) == due;
 		}
 
 		private void Sweep(DateTimeOffset now)

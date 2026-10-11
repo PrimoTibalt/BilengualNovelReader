@@ -9,7 +9,6 @@ using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.User;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Extensions.Primitives;
 
 namespace NovelReader
 {
@@ -17,6 +16,12 @@ namespace NovelReader
 	{
 		public static void Main(string[] args)
 		{
+			if (InviteCommand.IsInvoked(args))
+			{
+				InviteCommand.Run(args);
+				return;
+			}
+
 			var builder = WebApplication.CreateBuilder(args);
 
 			builder.Services.RegisterHttpClientAndRetriever(builder.Configuration);
@@ -54,6 +59,11 @@ namespace NovelReader
 					options.Cookie.Name = "novelreader.auth";
 					options.Cookie.HttpOnly = true;
 					options.Cookie.SameSite = SameSiteMode.Lax;
+					// Never sent over plain HTTP in production, whatever the proxy reports (D42).
+					// Development keeps the http profile working.
+					options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+						? CookieSecurePolicy.SameAsRequest
+						: CookieSecurePolicy.Always;
 
 					// The page's own fetch and SignalR calls want an answer, not a login page:
 					// a hub negotiate that gets HTML back fails with a JSON parse error.
@@ -75,40 +85,30 @@ namespace NovelReader
 			builder.Services.AddControllersWithViews();
 
 			builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 4);
+			builder.Services.AddAuthRateLimits();
 
-      var app = builder.Build();
+			// nginx, on this machine, says who the client was, over which scheme, and under which
+			// path the app is mounted (/reader). Only loopback is trusted to say so — the default —
+			// so a client's own X-Forwarded-* headers are ignored (D42).
+			builder.Services.Configure<ForwardedHeadersOptions>(options =>
+				options.ForwardedHeaders = ForwardedHeaders.XForwardedFor
+					| ForwardedHeaders.XForwardedProto
+					| ForwardedHeaders.XForwardedPrefix);
+
+			var app = builder.Build();
 
 			// Built now rather than by the first sign-in, so that request does not pay for the
 			// dummy hash an unknown name is checked against — a one-off delay that would mark
 			// the name as unknown (D41).
 			app.Services.GetRequiredService<NovelReader.Domain.RealTimeReader.Accounts.AccountService>();
-      app.UseForwardedHeaders(new() {
-          ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor
-          });
-      app.Use((context, next) =>
-          {
-          if (context.Request.Headers.TryGetValue("X-Forwarded-Prefix", out StringValues prefix))
-          {
-            string? firstPrefix = prefix[0];
-            if (!string.IsNullOrEmpty(firstPrefix))
-            {
-              firstPrefix = firstPrefix[0] == '/' ? firstPrefix : string.Concat("/", firstPrefix[0]);
-              prefix = new StringValues(
-                   [
-                   firstPrefix,
-                   .. prefix.Select(value => value).TakeLast(prefix.Count-1)
-                   ]
-              );
-              context.Request.PathBase = prefix.ToString();
-            }
-          }
-          return next();
-          });
 
-      if (!app.Environment.IsDevelopment())
-      {
-        app.UseHsts();
-      }
+			// First, so everything after sees the real client address, scheme and path base.
+			app.UseForwardedHeaders();
+			app.UseSecurityHeaders();
+			app.UseSameOriginRequests();
+
+			// No UseHsts: nginx sends Strict-Transport-Security for the whole domain, and a
+			// second, shorter header from here only contradicted it (D42).
       string? assetVersion = app.Services.GetRequiredService<AssetVersion>().PathPrefix;
 			// Versioned assets: /_v/{token}/… serves the same wwwroot files, but the token
 			// changes with every build (D25), so a returning reader fetches fresh URLs while the
@@ -128,6 +128,7 @@ namespace NovelReader
 
 			app.UseAuthentication();
 			app.UseAuthorization();
+			app.UseRateLimiter();
 
 			app.MapControllers().WithStaticAssets();
 			app.MapHub<RealTimeReaderHub>("/signalr");

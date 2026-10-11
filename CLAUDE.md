@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./run.sh                              # start everything: Mongo, SignalR client, the app
 ./run.sh --https                      # same, on the https profile
 ./run.sh --stop                       # stop the Mongo container
+dotnet run --project WebApi -- invite # print a single-use, 24-hour sign-up invite code (D42)
 dotnet build NovelReader.sln          # build all four projects
 dotnet run --project WebApi           # run the web app (http profile -> http://localhost:5261)
 dotnet run --project WebApi --launch-profile https   # https://localhost:7178
@@ -75,12 +76,35 @@ vocabulary.
 - Accounts: SQLite, one `accounts` table, `COLLATE NOCASE` primary key so usernames are unique
   case-insensitively. PBKDF2-HMAC-SHA256 via `PasswordHasher`; the stored string carries its
   own algorithm, iteration count and salt.
+- **Sign-up needs an invite code** (D42), made on the server with `NovelReader invite` (from
+  the app's directory and environment, so it opens the same database). Codes are single-use,
+  24 hours, stored as SHA-256 in an `invites` table, and spent in the same transaction that
+  creates the account.
+- `/auth/signin` and `/auth/signup` are rate-limited per client address (`AuthRateLimits`:
+  10/min, 5/hour), which needs `UseForwardedHeaders` first so the address is the client's
+  and not nginx's. Passwords are 8–128 characters. Sign-out is POST-only.
 - `/Login` and `/auth/*` are anonymous; `/ReadingPage` and the hub are not. A cookie challenge
   on `/auth` or `/signalr` answers **401 rather than redirecting** — a hub negotiate that gets
   the login page back fails with a JSON parse error instead of a useful one.
 - `AccountService` is where the rules live (name shape, password length, and answering
   "unknown user" and "wrong password" identically, at the same cost — the dummy hash an unknown
   name is checked against is built at start-up, so not even the first request differs (D41)).
+
+### Request hardening (D42)
+
+`Program.cs` runs, in order: `UseForwardedHeaders` (X-Forwarded-For/Proto/Prefix, trusted
+from loopback only — nginx), `UseSecurityHeaders`, `UseSameOriginRequests`, and after
+authorization `UseRateLimiter`. Things that break if forgotten:
+
+- **The CSP allows scripts from this origin only.** An inline `<script>` in `index.html` or
+  `login.html` is allowed by a hash computed from the file at start-up, so editing one needs
+  a restart, nothing more. An inline `style="…"` attribute or a script from a CDN will be
+  blocked. Set styles through `element.style` or a stylesheet.
+- **A request from another origin is refused with 403**: the hub, and any POST/PUT/DELETE.
+  A new page that posts from somewhere other than this origin will not work.
+- **Novel names are checked against `NovelSlug`** in the hub. A new hub method that takes a
+  novel name must check it too.
+- `AllowedHosts` lists the host names the app answers to.
 
 ### Read path (the core flow)
 
@@ -228,8 +252,9 @@ signed in. There is still no
 reset.
 
 Five wrong passwords lock a username for five minutes, doubling per further lock up to a
-day (D41). The count is `SignInThrottle`'s, in memory, shared by sign-in and the password
-change, and kept for names that have no account too, so a lock does not reveal whether a
+day (D41). The count is `SignInThrottle`'s, in memory. Sign-in and the password change
+each have their own, so an attacker at the sign-in form cannot stop the signed-in owner
+changing the password. Counts are kept for names that have no account too, so a lock does not reveal whether a
 name exists. Every attempt is counted *before* the password is checked, which is what holds
 the limit against parallel guesses.
 

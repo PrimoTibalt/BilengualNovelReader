@@ -3,11 +3,13 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using NovelReader.Domain.RealTimeReader.Accounts;
 
 namespace NovelReader.Controllers
 {
-	public record CredentialsRequest(string? UserName, string? Password);
+	/// <summary><see cref="InviteCode"/> is read by sign-up only (D42).</summary>
+	public record CredentialsRequest(string? UserName, string? Password, string? InviteCode = null);
 
 	/// <summary>Answer to a sign-in or sign-up attempt.</summary>
 	public record AuthResponse(bool Succeeded, string? UserName, string? Message, string? RedirectTo);
@@ -19,14 +21,18 @@ namespace NovelReader.Controllers
 	[ApiController]
 	[Route("auth")]
 	[AllowAnonymous]
+	// A name, a password and an invite code fit in far less; anything bigger is not a sign-in.
+	[RequestSizeLimit(4096)]
 	public class AuthController(AccountService accountService, ILogger<AuthController> logger) : ControllerBase
 	{
 		private const string ReadingPagePath = "/ReadingPage";
 
 		[HttpPost("signup")]
+		[EnableRateLimiting(AuthRateLimits.SignUp)]
 		public async Task<IActionResult> SignUp([FromBody] CredentialsRequest request, CancellationToken cancellationToken)
 		{
-			AccountResult result = await accountService.SignUpAsync(request.UserName, request.Password, cancellationToken);
+			AccountResult result = await accountService.SignUpAsync(
+				request.UserName, request.Password, request.InviteCode, cancellationToken);
 			if (!result.Succeeded)
 			{
 				// A rejected sign-up is an ordinary outcome, so 400 with the reason.
@@ -40,6 +46,7 @@ namespace NovelReader.Controllers
 		}
 
 		[HttpPost("signin")]
+		[EnableRateLimiting(AuthRateLimits.SignIn)]
 		public async Task<IActionResult> SignIn([FromBody] CredentialsRequest request, CancellationToken cancellationToken)
 		{
 			AccountResult result = await accountService.SignInAsync(request.UserName, request.Password, cancellationToken);
@@ -60,12 +67,15 @@ namespace NovelReader.Controllers
 			return Ok(new AuthResponse(true, result.UserName, null, ReadingPagePath));
 		}
 
+		/// <summary>
+		/// POST only (D42): as a GET, any page on the web could sign a reader out with an image
+		/// tag. The page posts here and then goes to the login screen itself.
+		/// </summary>
 		[HttpPost("signout")]
-		[HttpGet("signout")]
 		public async Task<IActionResult> SignOutReader()
 		{
 			await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-			return Redirect("/Login");
+			return NoContent();
 		}
 
 		/// <summary>Who the caller is, so the login page can skip itself when already signed in.</summary>

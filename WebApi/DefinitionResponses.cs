@@ -77,6 +77,7 @@ namespace NovelReader
 	{
 		public const string Locked = "locked";
 		public const string TooShort = "too-short";
+		public const string TooLong = "too-long";
 		public const string CurrentWrong = "current-wrong";
 		public const string Failed = "failed";
 	}
