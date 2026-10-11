@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using NovelReader.Domain.RealTimeReader.Accounts;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Parsing;
@@ -31,6 +32,7 @@ namespace NovelReader
 		TranslationService translationService,
 		ITranslationSettingsStore translationSettings,
 		AssistantSettingsService assistantSettings,
+		AccountService accountService,
 		ILogger<RealTimeReaderHub> logger) : Hub
 	{
 		/// <summary>Where a reader with no history starts.</summary>
@@ -365,6 +367,42 @@ namespace NovelReader
 			logger.LogInformation("AI settings removed for {User}", userName);
 
 			return AssistantResponse(null);
+		}
+
+		/// <summary>
+		/// Sets the caller's password, once their current one checks out (D40). Like everything
+		/// else here it acts on whoever the cookie names, so it cannot be pointed at another
+		/// account (D20).
+		/// </summary>
+		public async Task<PasswordChangeResponse> ChangePassword(string currentPassword, string newPassword)
+		{
+			string userName = CallerName;
+
+			AccountResult result = await accountService.ChangePasswordAsync(
+				userName, currentPassword, newPassword, Context.ConnectionAborted);
+			if (!result.Succeeded)
+			{
+				if (result.Failure == AccountFailure.CurrentPasswordWrong)
+				{
+					logger.LogWarning("Password change refused for {User}: wrong current password", userName);
+				}
+
+				if (result.Failure == AccountFailure.LockedOut)
+				{
+					logger.LogWarning("Password change locked for {User} ({Minutes} min left)", userName, result.RetryAfterMinutes);
+					return new PasswordChangeResponse(PasswordChangeResponse.Locked, result.RetryAfterMinutes);
+				}
+
+				return new PasswordChangeResponse(result.Failure switch
+				{
+					AccountFailure.PasswordTooShort => PasswordChangeResponse.TooShort,
+					AccountFailure.CurrentPasswordWrong => PasswordChangeResponse.CurrentWrong,
+					_ => PasswordChangeResponse.Failed
+				});
+			}
+
+			logger.LogInformation("Password changed for {User}", userName);
+			return new PasswordChangeResponse(Error: null);
 		}
 
 		private async Task<AssistantSettingsResponse> DescribeAssistantAsync(string userName) =>

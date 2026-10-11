@@ -77,6 +77,11 @@ namespace NovelReader
 			builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 4);
 
       var app = builder.Build();
+
+			// Built now rather than by the first sign-in, so that request does not pay for the
+			// dummy hash an unknown name is checked against — a one-off delay that would mark
+			// the name as unknown (D41).
+			app.Services.GetRequiredService<NovelReader.Domain.RealTimeReader.Accounts.AccountService>();
       app.UseForwardedHeaders(new() {
           ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor
           });

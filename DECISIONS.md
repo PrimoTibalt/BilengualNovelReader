@@ -1464,3 +1464,62 @@ markup after a reload matched the live underlines.
   rules for good.** During testing a timeout did exactly that to `evening`, which then matched
   `even`. The cure belongs in the definition cache: tell a provider that failed apart from one
   that answered "not found". That is not done yet.
+
+## D40 — A password is changed from the settings drawer, the new one typed once
+
+**Decision.** The settings drawer has a `password` section: the current password, the new
+one, each with an eye button beside it that shows what was typed, and `change`. There is no
+"repeat it" field — the eye does that job. The current password is mandatory, even though
+the cookie already says who this is, so a session left open on someone else's screen cannot
+be turned into the account.
+
+**How.** `RealTimeReaderHub.ChangePassword(currentPassword, newPassword)` →
+`AccountService.ChangePasswordAsync`, which verifies the current password against the stored
+hash → `IUserAccountRepository.UpdatePasswordHashAsync`. Like every hub method it acts on the
+caller the cookie names, so it cannot be pointed at another account (D20). The 8-character
+floor is the sign-up one. A wrong current password answers `current-wrong` and is logged as a
+warning. Both fields are cleared and hidden again whenever the drawer opens.
+
+**Consequences and known gaps.**
+- Wrong current passwords count towards the sign-in lock (D41), so an open session is not a
+  way round it.
+- Other devices stay signed in after a change: the cookie carries no security stamp, so there
+  is nothing to invalidate them with. Signing everyone out means rotating the key ring (D35).
+
+## D41 — Five wrong passwords lock a name, for longer each time
+
+**Decision.** Five wrong passwords for a username lock it for five minutes. If the guessing
+carries on after the lock runs out, the next five earn ten minutes, then 20, 40 … up to a
+day. A right password clears the record, and so does a day with no attempts, counted from
+the end of the last lock. Sign-in and the password change's current-password check (D40)
+share one count.
+
+**How.** `SignInThrottle` (Domain, in memory, keyed case-insensitively like the accounts
+table). `AccountService` claims an attempt *before* checking the password, and a success
+wipes the record. Counting each attempt up front is what makes the limit hold under a
+burst of parallel guesses. Counting afterwards would let them all pass the "is it
+locked?" check first. A locked sign-in answers `429` with `Retry-After` and "Too many wrong
+passwords. Try again in N minutes."; the hub answers `locked` with the minutes.
+
+**Not telling which names exist.**
+- Names that have no account are tracked and locked exactly like real ones, with the same
+  answer. If only real accounts could be locked, the lock would give away which names exist.
+- A lock is checked before the account lookup and answers without hashing, so it is
+  instant either way.
+- An unknown name is still verified against a dummy hash (as before), so it costs a full
+  PBKDF2 like a wrong password does. The dummy hash is now built at start-up — `Program`
+  resolves `AccountService` eagerly. Built lazily, the first unknown name would have paid
+  for two PBKDF2s.
+- Measured against the running app: wrong passwords for 12 real accounts and 12 unknown
+  names, 36 each, came back in a mean of 139 ms and 140 ms.
+
+**Consequences and known gaps.**
+- Anyone can lock anyone out by typing their name with wrong passwords. That is the price
+  of a per-name lock. The growth means it costs the attacker more to keep up, not that it
+  stops them.
+- The lock is per name, not per address, so trying one common password against many names
+  is not slowed at all. An address-based limit (ASP.NET's rate limiter) would be the next layer.
+- In memory: a restart forgets every lock. Tracked names are swept once there are more than
+  10,000, removing the ones that have gone quiet.
+- Sign-up still says "That username is already taken." — it has to, for a sign-up to make
+  sense — so the throttle stops name discovery through sign-in, not through sign-up.

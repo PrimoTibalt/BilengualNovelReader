@@ -73,6 +73,23 @@ namespace NovelReader.Data.Sqlite
 			};
 		}
 
+		public async Task<bool> UpdatePasswordHashAsync(string userName, string passwordHash, CancellationToken cancellationToken = default)
+		{
+			await using SqliteConnection connection = new(connectionString);
+			await connection.OpenAsync(cancellationToken);
+
+			await using SqliteCommand command = connection.CreateCommand();
+			command.CommandText = """
+				UPDATE accounts
+				SET password_hash = $passwordHash
+				WHERE user_name = $userName;
+				""";
+			command.Parameters.AddWithValue("$passwordHash", passwordHash);
+			command.Parameters.AddWithValue("$userName", userName);
+
+			return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+		}
+
 		/// <summary>
 		/// This reader's translation settings, or null when they have never set them up — which
 		/// is what tells the page to ask for them instead of translating (D31). Both columns are

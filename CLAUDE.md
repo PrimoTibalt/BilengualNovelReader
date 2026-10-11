@@ -79,7 +79,8 @@ vocabulary.
   on `/auth` or `/signalr` answers **401 rather than redirecting** — a hub negotiate that gets
   the login page back fails with a JSON parse error instead of a useful one.
 - `AccountService` is where the rules live (name shape, password length, and answering
-  "unknown user" and "wrong password" identically, at the same cost).
+  "unknown user" and "wrong password" identically, at the same cost — the dummy hash an unknown
+  name is checked against is built at start-up, so not even the first request differs (D41)).
 
 ### Read path (the core flow)
 
@@ -148,8 +149,8 @@ TypeScript, no framework and no bundler. Sources live in `WebApi/src/`; `tsc` em
   (`.settings-row`, `.settings-actions`), h/l along a row (or the slider's value), Enter
   edits/presses, Escape leaves a field and then closes the drawer. New sections get this free
   as long as they build rows with `settingsRow`/`settingsActions`. `appearanceSection.ts` (font size, chapter-title size (independent, D38), colours — per device, in
-  `localStorage`, applied pre-paint by an inline script in `index.html`) and
-  `assistantSection.ts` (the reader's AI: service, model, key).
+  `localStorage`, applied pre-paint by an inline script in `index.html`),
+  `assistantSection.ts` (the reader's AI: service, model, key) and `passwordSection.ts` (D40).
 - `src/interactive-select/module.ts` — `NavigationMenu`, the TUI panel opened with `n`. It is a **stack of `MenuScreen`s**, not one list: activating a row can `push` another screen, Escape pops (clearing an active filter first) and closes at the root. It renders the panel itself and handles no keys — the caller binds `move`/`activate`/`back` through the router — except inside the filter field, which owns its keystrokes while focused.
 
 The top-right corner is a stack (`.reader-affordances`): the `n navigate` hint, the
@@ -221,7 +222,16 @@ when it fails. `OpenAiCompatibleAssistant` (in `NovelReader.Dictionary`) speaks 
 chat-completions dialect to a fixed list of services (`AssistantServices`) — never a
 user-supplied URL.
 
-Accounts have no password change, no reset, and no rate limit on sign-in attempts.
+A signed-in reader can change their password from the settings drawer (D40): the current
+password is required, the new one is typed once with an eye to show it, and other devices stay
+signed in. There is still no
+reset.
+
+Five wrong passwords lock a username for five minutes, doubling per further lock up to a
+day (D41). The count is `SignInThrottle`'s, in memory, shared by sign-in and the password
+change, and kept for names that have no account too, so a lock does not reveal whether a
+name exists. Every attempt is counted *before* the password is checked, which is what holds
+the limit against parallel guesses.
 
 `ParagraphsRetriever` treats the source site's occasional `200`-with-no-paragraphs as a hard
 failure; it wants a retry with backoff, and a way to tell a transient apart from the actual end

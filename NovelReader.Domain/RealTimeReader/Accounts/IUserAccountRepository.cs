@@ -14,5 +14,8 @@ namespace NovelReader.Domain.RealTimeReader.Accounts
 		Task<AccountResult> CreateAsync(string userName, string passwordHash, CancellationToken cancellationToken = default);
 
 		Task<UserAccount?> FindAsync(string userName, CancellationToken cancellationToken = default);
+
+		/// <summary>Replaces the account's password hash. False when there is no such account.</summary>
+		Task<bool> UpdatePasswordHashAsync(string userName, string passwordHash, CancellationToken cancellationToken = default);
 	}
 }

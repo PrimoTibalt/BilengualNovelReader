@@ -4,7 +4,7 @@ namespace NovelReader.Tests
 {
 	public class AccountServiceTests
 	{
-		private static AccountService Build() => new(new InMemoryUserAccountRepository());
+		private static AccountService Build() => new(new InMemoryUserAccountRepository(), new SignInThrottle(TimeProvider.System));
 
 		[Theory]
 		[InlineData("ab")]                                  // too short
@@ -86,6 +86,55 @@ namespace NovelReader.Tests
 
 			Assert.True((await service.SignUpAsync("  anton  ", "a-good-password")).Succeeded);
 			Assert.True((await service.SignInAsync("anton", "a-good-password")).Succeeded);
+		}
+
+		[Fact]
+		public async Task A_changed_password_replaces_the_old_one()
+		{
+			AccountService service = Build();
+			await service.SignUpAsync("anton", "a-good-password");
+
+			AccountResult changed = await service.ChangePasswordAsync("anton", "a-good-password", "a-new-password");
+
+			Assert.True(changed.Succeeded);
+			Assert.True((await service.SignInAsync("anton", "a-new-password")).Succeeded);
+			Assert.False((await service.SignInAsync("anton", "a-good-password")).Succeeded);
+		}
+
+		[Fact]
+		public async Task A_short_new_password_is_refused_and_the_old_one_kept()
+		{
+			AccountService service = Build();
+			await service.SignUpAsync("anton", "a-good-password");
+
+			AccountResult changed = await service.ChangePasswordAsync("anton", "a-good-password", "short");
+
+			Assert.Equal(AccountFailure.PasswordTooShort, changed.Failure);
+			Assert.True((await service.SignInAsync("anton", "a-good-password")).Succeeded);
+		}
+
+		[Theory]
+		[InlineData("not-the-password")]
+		[InlineData("")]
+		[InlineData(null)]
+		public async Task A_wrong_current_password_is_refused_and_the_old_one_kept(string? currentPassword)
+		{
+			AccountService service = Build();
+			await service.SignUpAsync("anton", "a-good-password");
+
+			AccountResult changed = await service.ChangePasswordAsync("anton", currentPassword, "a-new-password");
+
+			Assert.Equal(AccountFailure.CurrentPasswordWrong, changed.Failure);
+			Assert.True((await service.SignInAsync("anton", "a-good-password")).Succeeded);
+			Assert.False((await service.SignInAsync("anton", "a-new-password")).Succeeded);
+		}
+
+		[Fact]
+		public async Task Changing_the_password_of_a_missing_account_fails()
+		{
+			AccountResult changed = await Build().ChangePasswordAsync("nobody", "a-good-password", "a-new-password");
+
+			Assert.False(changed.Succeeded);
 		}
 	}
 }

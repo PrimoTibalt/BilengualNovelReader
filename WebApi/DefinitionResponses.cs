@@ -70,6 +70,18 @@ namespace NovelReader
 	}
 
 	/// <summary>
+	/// Answer to a password change. <see cref="Error"/> is null on success, otherwise a code
+	/// the page puts into words.
+	/// </summary>
+	public record PasswordChangeResponse(string? Error, int? RetryAfterMinutes = null)
+	{
+		public const string Locked = "locked";
+		public const string TooShort = "too-short";
+		public const string CurrentWrong = "current-wrong";
+		public const string Failed = "failed";
+	}
+
+	/// <summary>
 	/// Sent after a save or delete so the page can update underlines in place.
 	/// <see cref="Term"/> is the word as saved; <see cref="Forms"/> is every form it is matched
 	/// in, so the page underlines exactly what the server would (D39).

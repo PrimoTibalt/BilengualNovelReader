@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Data.Sqlite;
 using NovelReader.Domain.RealTimeReader.Accounts;
 using NovelReader.Domain.RealTimeReader.Assistant;
@@ -27,6 +28,8 @@ namespace NovelReader.Data.Sqlite
 			services.AddSingleton<IUserAccountRepository>(repository);
 			services.AddSingleton<ITranslationSettingsStore>(repository);
 			services.AddSingleton<IAssistantSettingsStore>(repository);
+			services.TryAddSingleton(TimeProvider.System);
+			services.AddSingleton<SignInThrottle>();
 			services.AddSingleton<AccountService>();
 		}
 

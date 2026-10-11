@@ -39,6 +39,13 @@ interface TranslationWire {
   readonly provider: string | null;
 }
 
+export interface PasswordChangeResult {
+  /** Null when the password was changed; otherwise why not. */
+  readonly error: string | null;
+  /** With `locked`: how long until the next try (D41). */
+  readonly retryAfterMinutes: number | null;
+}
+
 interface TranslationSettingsWire {
   readonly email: string | null;
   readonly language: string | null;
@@ -334,6 +341,19 @@ export class ReaderConnection {
       return await this.#call<AssistantSettingsView>("RemoveAssistantSettings");
     } catch (error: unknown) {
       console.error("Could not remove AI settings:", error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Sets the reader's password, given their current one. Undefined when the server could not
+   * be reached.
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<PasswordChangeResult | undefined> {
+    try {
+      return await this.#call<PasswordChangeResult>("ChangePassword", currentPassword, newPassword);
+    } catch (error: unknown) {
+      console.error("Could not change the password:", error);
       return undefined;
     }
   }

@@ -19,7 +19,7 @@ namespace NovelReader.Tests
 			string connectionString = $"Data Source={databasePath}";
 			SqliteUserAccountRepository.EnsureCreated(connectionString);
 			repository = new SqliteUserAccountRepository(connectionString);
-			service = new AccountService(repository);
+			service = new AccountService(repository, new SignInThrottle(TimeProvider.System));
 		}
 
 		public void Dispose()
@@ -40,6 +40,19 @@ namespace NovelReader.Tests
 
 			Assert.True(signedIn.Succeeded);
 			Assert.Equal("anton", signedIn.UserName);
+		}
+
+		[Fact]
+		public async Task A_password_change_is_stored()
+		{
+			await service.SignUpAsync("Anton", "a-good-password");
+
+			// The column collates NOCASE, so the update finds the row whatever the casing.
+			Assert.True((await service.ChangePasswordAsync("anton", "a-good-password", "a-new-password")).Succeeded);
+
+			Assert.True((await service.SignInAsync("Anton", "a-new-password")).Succeeded);
+			Assert.False((await service.SignInAsync("Anton", "a-good-password")).Succeeded);
+			Assert.False(await repository.UpdatePasswordHashAsync("nobody", "x"));
 		}
 
 		[Fact]

@@ -43,6 +43,14 @@ namespace NovelReader.Controllers
 		public async Task<IActionResult> SignIn([FromBody] CredentialsRequest request, CancellationToken cancellationToken)
 		{
 			AccountResult result = await accountService.SignInAsync(request.UserName, request.Password, cancellationToken);
+			if (result.Failure == AccountFailure.LockedOut)
+			{
+				// Said as plainly for a name that does not exist as for one that does (D41).
+				logger.LogWarning("Sign-in locked for {User} ({Minutes} min left)", request.UserName, result.RetryAfterMinutes);
+				Response.Headers.RetryAfter = ((int)Math.Ceiling(result.RetryAfter!.Value.TotalSeconds)).ToString();
+				return StatusCode(StatusCodes.Status429TooManyRequests, new AuthResponse(false, null, result.Message, null));
+			}
+
 			if (!result.Succeeded)
 			{
 				return Unauthorized(new AuthResponse(false, null, result.Message, null));

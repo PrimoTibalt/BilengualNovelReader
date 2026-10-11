@@ -31,5 +31,21 @@ namespace NovelReader.Tests
 			accounts.TryGetValue(userName, out UserAccount? account);
 			return Task.FromResult(account);
 		}
+
+		public Task<bool> UpdatePasswordHashAsync(string userName, string passwordHash, CancellationToken cancellationToken = default)
+		{
+			if (!accounts.TryGetValue(userName, out UserAccount? account))
+			{
+				return Task.FromResult(false);
+			}
+
+			accounts[userName] = new UserAccount
+			{
+				UserName = account.UserName,
+				PasswordHash = passwordHash,
+				CreatedAtUtc = account.CreatedAtUtc
+			};
+			return Task.FromResult(true);
+		}
 	}
 }

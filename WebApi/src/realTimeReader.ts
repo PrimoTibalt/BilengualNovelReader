@@ -28,6 +28,7 @@ import {
 import { underlineTerm, removeUnderline } from "./reading/underliner.js";
 import { AppearanceSection } from "./ui/appearanceSection.js";
 import { AssistantSection } from "./ui/assistantSection.js";
+import { PasswordSection } from "./ui/passwordSection.js";
 import { DefinitionBox } from "./ui/definitionBox.js";
 import { SettingsPanel } from "./ui/settingsPanel.js";
 
@@ -977,7 +978,11 @@ if (settingsAffordance && !isTouchPrimary) {
  * {@link SettingsSection} added here, and the drawer scrolls once they outgrow the screen.
  */
 const settingsPanel = settingsAffordance instanceof HTMLButtonElement
-  ? new SettingsPanel(settingsAffordance, [new AppearanceSection(keepReadingPosition), assistantSection], {
+  ? new SettingsPanel(settingsAffordance, [
+    new AppearanceSection(keepReadingPosition),
+    assistantSection,
+    new PasswordSection((currentPassword, newPassword) => connection.changePassword(currentPassword, newPassword)),
+  ], {
     onOpen: () => {
       // The drawer covers the page; nothing else should be left open behind it.
       if (definitionBox.isOpen) closeDefinitionBox();

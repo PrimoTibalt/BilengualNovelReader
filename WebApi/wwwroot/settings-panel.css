@@ -337,3 +337,31 @@ html.touch-input .settings-button {
 	border-color: var(--tui-rule);
 	cursor: default;
 }
+
+/*
+ * The eye beside the password field: shows what was typed, so the new password is entered
+ * once rather than twice. Squared off and sized to the field, like the colour swatch.
+ */
+.settings-reveal {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.4em;
+	height: 2.1em;
+	padding: 0;
+	color: var(--tui-dim);
+	background-color: var(--tui-bg);
+	border: 1px solid var(--tui-rule);
+	border-radius: 0;
+	cursor: pointer;
+}
+
+.settings-reveal[aria-pressed="true"] {
+	color: var(--tui-accent);
+}
+
+.settings-reveal svg {
+	width: 1.2em;
+	height: 1.2em;
+}
