@@ -294,6 +294,10 @@ The **server decides everything**; the page shows exercises and sends back what 
   the card), the sentence to translate, and judging free answers as
   `correct`/`partial`/`wrong` → Good/Hard/Again. Uses `IAssistant.AskAsync`. An unreadable AI
   answer grades nothing; the exercise stays open.
+- **Free answers go to `IAnswerJudge` first** (D46): `JevAnswerJudge`, TypeSafe's Jev decision
+  API, registered only when `JEV_ACCESS_KEY` is set (the app's key, from `.env`). It returns a
+  verdict with no feedback, or null (failure, more than 3 s, confidence under 0.6), and null
+  falls through to the reader's AI as above.
 - `ReviewService` — one open exercise per reader, **in memory** (a restart drops it, nothing
   is lost). A match's key stays on the server; pairs are checked one at a time.
 - Cards: Mongo `Users.ReviewCards`, one per (user, term), unique index. A card is created

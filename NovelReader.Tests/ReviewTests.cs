@@ -151,6 +151,75 @@ namespace NovelReader.Tests
 		{
 			Assert.Null(ReviewTutor.ReadJudgement(reply));
 		}
+
+		private static readonly AssistantSettings Settings = new("digitalocean", "glm-5.3", "sk-do-1234567890");
+
+		[Fact]
+		public async Task The_quick_judge_answers_first_and_the_ai_is_not_asked()
+		{
+			ScriptedAssistant assistant = new();
+			ReviewTutor tutor = new(assistant, new FixedJudge(AnswerVerdict.Partial));
+
+			Judgement? judgement = await tutor.JudgeRecallAsync(Settings, "sneer", "a contemptuous smile", "a smile");
+
+			Assert.Equal(new Judgement(AnswerVerdict.Partial, string.Empty), judgement);
+			Assert.Equal(0, assistant.Calls);
+		}
+
+		[Fact]
+		public async Task When_the_quick_judge_has_no_verdict_the_ai_judges_and_explains()
+		{
+			ScriptedAssistant assistant = new();
+			assistant.Answers["what a word means"] = _ => "{\"verdict\":\"correct\",\"feedback\":\"Yes.\"}";
+			ReviewTutor tutor = new(assistant, new FixedJudge(null));
+
+			Judgement? judgement = await tutor.JudgeRecallAsync(Settings, "sneer", "a contemptuous smile", "a mocking smile");
+
+			Assert.Equal(new Judgement(AnswerVerdict.Correct, "Yes."), judgement);
+			Assert.Equal(1, assistant.Calls);
+		}
+
+		private sealed class FixedJudge(AnswerVerdict? verdict) : IAnswerJudge
+		{
+			public Task<AnswerVerdict?> JudgeAsync(
+				string instructions,
+				IReadOnlyDictionary<AnswerVerdict, string> verdicts,
+				string answer,
+				CancellationToken cancellationToken = default) => Task.FromResult(verdict);
+		}
+	}
+
+	/// <summary>Reading Jev's answer to the verdict question (D46).</summary>
+	public class JevAnswerJudgeTests
+	{
+		private static string Reply(string choice, double confidence) =>
+			"{\"model\":\"jev-1.13.0\",\"answers\":{\"verdict\":{\"type\":\"choice\",\"choice\":\"" + choice
+			+ "\",\"confidence\":" + confidence.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"probabilities\":{\"" + choice + "\":" + confidence.ToString(System.Globalization.CultureInfo.InvariantCulture)
+			+ "}}},\"usage\":{\"input_tokens\":120,\"output_tokens\":0}}";
+
+		[Theory]
+		[InlineData("correct", AnswerVerdict.Correct)]
+		[InlineData("partial", AnswerVerdict.Partial)]
+		[InlineData("wrong", AnswerVerdict.Wrong)]
+		public void A_confident_choice_is_the_verdict(string choice, AnswerVerdict verdict)
+		{
+			Assert.Equal(verdict, NovelReader.Dictionary.JevAnswerJudge.ReadVerdict(Reply(choice, 0.9)));
+		}
+
+		[Fact]
+		public void An_unsure_choice_is_left_to_the_ai()
+		{
+			Assert.Null(NovelReader.Dictionary.JevAnswerJudge.ReadVerdict(Reply("correct", 0.45)));
+		}
+
+		[Theory]
+		[InlineData("""{"answers":{"verdict":{"choice":"maybe","confidence":0.99}}}""")]
+		[InlineData("""{"answers":{}}""")]
+		[InlineData("not json")]
+		public void Anything_else_is_no_verdict(string reply)
+		{
+			Assert.Null(NovelReader.Dictionary.JevAnswerJudge.ReadVerdict(reply));
+		}
 	}
 
 	/// <summary>A review session end to end, against fakes for the stores and the AI.</summary>

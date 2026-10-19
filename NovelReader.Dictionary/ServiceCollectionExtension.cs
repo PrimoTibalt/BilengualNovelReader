@@ -38,6 +38,12 @@ namespace NovelReader.Dictionary
 		/// </summary>
 		private static readonly TimeSpan AssistantTimeout = TimeSpan.FromSeconds(30);
 
+		/// <summary>
+		/// Jev answers in about half a second. A judge that has not answered in three is not
+		/// saving the reader anything; the reader's AI is asked instead.
+		/// </summary>
+		private static readonly TimeSpan JevTimeout = TimeSpan.FromSeconds(3);
+
 		public static void RegisterDictionaryProviders(this IServiceCollection services)
 		{
 			services.AddHttpClient(WiktionaryDefinitionProvider.HttpClientName, client =>
@@ -94,6 +100,29 @@ namespace NovelReader.Dictionary
 			services.AddSingleton<IAssistant, OpenAiCompatibleAssistant>();
 			services.AddSingleton<AssistedDefinitionService>();
 			services.AddSingleton<ReviewTutor>();
+		}
+
+		/// <summary>
+		/// The review's quick judge (D46), when the app has a Jev key. Without one nothing is
+		/// registered and the reader's AI judges every answer, as before.
+		/// </summary>
+		public static void AddJevAnswerJudge(this IServiceCollection services, string? accessKey)
+		{
+			if (string.IsNullOrWhiteSpace(accessKey))
+			{
+				return;
+			}
+
+			services.AddHttpClient(JevAnswerJudge.HttpClientName, client =>
+			{
+				client.BaseAddress = new Uri("https://api.typesafe.ai/");
+				client.Timeout = JevTimeout;
+				client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessKey.Trim());
+				client.DefaultRequestHeaders.UserAgent.Clear();
+				client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
+			});
+
+			services.AddSingleton<IAnswerJudge, JevAnswerJudge>();
 		}
 	}
 }

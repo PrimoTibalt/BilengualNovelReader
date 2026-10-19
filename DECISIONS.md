@@ -1747,3 +1747,41 @@ phone width. A graceful stop wrote the minute under way.
 
 **Not done.** No alerting: the panel shows what happened but tells no one. Nothing watches
 from outside, so the panel cannot report that the site itself is down.
+
+## D46 — Free answers are graded by Jev first, the reader's AI second
+
+**Status:** Adopted · 2026-10-19
+
+**Context.** D44 sends every free answer (recall, sentence, translation) to the reader's own AI,
+which takes a second or two at best and is paid for by the reader. A verdict out of three is a
+classification, not writing. TypeSafe's Jev is a decision model built for exactly that, at
+about half a second and $0.042 per million input tokens, with output free.
+
+**Decision.**
+- `IAnswerJudge` (Domain) picks a verdict and nothing else. `ReviewTutor` asks it first and
+  asks the reader's AI only when it returns null.
+- `JevAnswerJudge` (`NovelReader.Dictionary`) sends one `choice` question to
+  `POST https://api.typesafe.ai/v1/systemone` (model `jev-latest`). The options are
+  `correct`/`partial`/`wrong`, each described by the same rules the AI prompts use. The text it
+  judges is the same as the AI's question.
+- **Null, and so the AI, when:** the call fails or runs past 3 s, the reply is unreadable, or
+  the chosen option's probability is under 0.6. A torn verdict is exactly the case where the
+  AI's explanation is worth paying for.
+- **No feedback text** on a Jev verdict. The page already shows the meaning (or a good
+  translation) beside every verdict, and the feedback mostly repeated it.
+- **The app's key, not the reader's:** `JEV_ACCESS_KEY` from the environment (`.env`, and the
+  server's `EnvironmentFile`). Without it nothing is registered, and every answer goes to the
+  AI as before. The review still requires the reader's AI, which writes the glosses and the
+  translation sentences.
+
+**Verified.** 9 unit tests cover reading Jev's reply and the confidence cut-off, and the tutor
+taking the judge's verdict without asking the AI or falling back when it has none. All 307 pass.
+Against the live API, with the requests `JevAnswerJudge` sends, 12 hand-written answers whose
+verdict was clear got 12 right: 4 recall, 4 sentence, and 4 translations from Russian. Each
+took about 370 ms (one 1.4 s) and about 450 input tokens, roughly $0.00002 an answer. The reply
+matched the documented shape, with `probabilities` keyed by option name. Its `confidence` is
+lower than the top probability (0.30 against 0.53), so the cut-off reads the probability.
+One recall ("a lamp you carry with a candle inside" for *lantern*) was right at 0.53, so it
+would go to the AI. That is the torn case the cut-off is for.
+
+**Not done.** The 0.6 cut-off is set from those 12 answers; tune it on real readers' answers.

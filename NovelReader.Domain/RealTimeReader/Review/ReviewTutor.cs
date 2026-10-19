@@ -14,8 +14,10 @@ namespace NovelReader.Domain.RealTimeReader.Review
 	/// sentences a translation exercise starts from, and judges what the reader wrote or said.
 	/// Every answer is asked for as JSON and read defensively; anything unreadable is null, and
 	/// the caller grades nothing rather than guess.
+	/// A free answer goes to the <c>judge</c> first when there is one (D46): it only picks a
+	/// verdict, but in a fraction of the time and cost, and the AI is asked only when it cannot.
 	/// </summary>
-	public sealed class ReviewTutor(IAssistant assistant)
+	public sealed class ReviewTutor(IAssistant assistant, IAnswerJudge? judge = null)
 	{
 		/// <summary>Longest answer the reader may send, which is far more than any sentence.</summary>
 		public const int MaximumAnswerLength = 1000;
@@ -67,6 +69,44 @@ namespace NovelReader.Domain.RealTimeReader.Review
 			The feedback is one or two short sentences to the learner, in English.
 			""";
 
+		private const string RecallJudgeInstructions = """
+			An English learner was asked what a word means and answered in their own words, perhaps
+			by voice. Ignore spelling, punctuation and transcription slips. Does the learner know
+			the meaning? A different real meaning of the word counts as knowing it.
+			""";
+
+		private static readonly IReadOnlyDictionary<AnswerVerdict, string> RecallVerdicts = new Dictionary<AnswerVerdict, string>
+		{
+			[AnswerVerdict.Correct] = "the answer gives the meaning, or another real meaning of the word",
+			[AnswerVerdict.Partial] = "the answer is close to the meaning but vague or incomplete",
+			[AnswerVerdict.Wrong] = "the answer gives a meaning the word does not have, or none"
+		};
+
+		private const string SentenceJudgeInstructions = """
+			An English learner was asked to write a sentence using a word, perhaps by voice. Ignore
+			spelling, punctuation and transcription slips. Did they use the word correctly?
+			""";
+
+		private static readonly IReadOnlyDictionary<AnswerVerdict, string> SentenceVerdicts = new Dictionary<AnswerVerdict, string>
+		{
+			[AnswerVerdict.Correct] = "the word, or a form of it, is used with a meaning it really has and fits the sentence naturally",
+			[AnswerVerdict.Partial] = "the meaning comes through but the word is used awkwardly",
+			[AnswerVerdict.Wrong] = "the word is missing, or used with a meaning it does not have"
+		};
+
+		private const string TranslationQuickJudgeInstructions = """
+			An English learner translated a sentence from {0} into English, perhaps by voice, and
+			was meant to use a given English word. Ignore spelling, punctuation and transcription
+			slips. How good is the translation?
+			""";
+
+		private static readonly IReadOnlyDictionary<AnswerVerdict, string> TranslationVerdicts = new Dictionary<AnswerVerdict, string>
+		{
+			[AnswerVerdict.Correct] = "a faithful translation that uses the word or a form of it",
+			[AnswerVerdict.Partial] = "the meaning is right but the word is not used, or the word is used but the translation is noticeably off",
+			[AnswerVerdict.Wrong] = "the translation does not carry the meaning of the sentence"
+		};
+
 		/// <summary>One-line definitions for <paramref name="words"/>, keyed by the word; missing ones are left out.</summary>
 		public async Task<IReadOnlyDictionary<string, string>> GlossesAsync(
 			AssistantSettings settings,
@@ -106,7 +146,8 @@ namespace NovelReader.Domain.RealTimeReader.Review
 			CancellationToken cancellationToken = default)
 		{
 			string question = $"Word: {word}\nIts meaning: {reference}\nLearner's answer: {answer}";
-			return ReadJudgement(await assistant.AskAsync(settings, RecallInstructions, question, cancellationToken));
+			return await QuickJudgementAsync(RecallJudgeInstructions, RecallVerdicts, question, cancellationToken)
+				?? ReadJudgement(await assistant.AskAsync(settings, RecallInstructions, question, cancellationToken));
 		}
 
 		public async Task<Judgement?> JudgeSentenceAsync(
@@ -117,7 +158,8 @@ namespace NovelReader.Domain.RealTimeReader.Review
 			CancellationToken cancellationToken = default)
 		{
 			string question = $"Word: {word}\nIts meaning: {reference}\nLearner's sentence: {answer}";
-			return ReadJudgement(await assistant.AskAsync(settings, SentenceInstructions, question, cancellationToken));
+			return await QuickJudgementAsync(SentenceJudgeInstructions, SentenceVerdicts, question, cancellationToken)
+				?? ReadJudgement(await assistant.AskAsync(settings, SentenceInstructions, question, cancellationToken));
 		}
 
 		public async Task<TranslationTask?> TranslationTaskAsync(
@@ -150,7 +192,28 @@ namespace NovelReader.Domain.RealTimeReader.Review
 			string instructions = string.Format(TranslationJudgeInstructions, languageName);
 			string question = $"Sentence in {languageName}: {task.Sentence}\nA good translation: {task.English}\n"
 				+ $"Word to use: {word}\nLearner's translation: {answer}";
-			return ReadJudgement(await assistant.AskAsync(settings, instructions, question, cancellationToken));
+			string quickInstructions = string.Format(TranslationQuickJudgeInstructions, languageName);
+			return await QuickJudgementAsync(quickInstructions, TranslationVerdicts, question, cancellationToken)
+				?? ReadJudgement(await assistant.AskAsync(settings, instructions, question, cancellationToken));
+		}
+
+		/// <summary>
+		/// The judge's verdict, without feedback: the page shows the meaning beside every verdict,
+		/// which is most of what the feedback said. Null when there is no judge or it had no answer.
+		/// </summary>
+		private async Task<Judgement?> QuickJudgementAsync(
+			string instructions,
+			IReadOnlyDictionary<AnswerVerdict, string> verdicts,
+			string answer,
+			CancellationToken cancellationToken)
+		{
+			if (judge is null)
+			{
+				return null;
+			}
+
+			AnswerVerdict? verdict = await judge.JudgeAsync(instructions, verdicts, answer, cancellationToken);
+			return verdict is null ? null : new Judgement(verdict.Value, string.Empty);
 		}
 
 		public static Judgement? ReadJudgement(string? content)
