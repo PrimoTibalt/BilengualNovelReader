@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using NovelReader.Domain.Monitoring;
 using NovelReader.Domain.RealTimeReader.Accounts;
+using NovelReader.Monitoring;
 
 namespace NovelReader.Controllers
 {
@@ -23,7 +25,7 @@ namespace NovelReader.Controllers
 	[AllowAnonymous]
 	// A name, a password and an invite code fit in far less; anything bigger is not a sign-in.
 	[RequestSizeLimit(4096)]
-	public class AuthController(AccountService accountService, ILogger<AuthController> logger) : ControllerBase
+	public class AuthController(AccountService accountService, AuthEventRecorder authEvents, ILogger<AuthController> logger) : ControllerBase
 	{
 		private const string ReadingPagePath = "/ReadingPage";
 
@@ -35,12 +37,14 @@ namespace NovelReader.Controllers
 				request.UserName, request.Password, request.InviteCode, cancellationToken);
 			if (!result.Succeeded)
 			{
+				await authEvents.RecordAsync(AuthOutcome.SignUpRefused, request.UserName, HttpContext, result.Failure.ToString());
 				// A rejected sign-up is an ordinary outcome, so 400 with the reason.
 				return BadRequest(new AuthResponse(false, null, result.Message, null));
 			}
 
 			await SignInWithCookieAsync(result.UserName!);
 			logger.LogInformation("New account {User}", result.UserName);
+			await authEvents.RecordAsync(AuthOutcome.SignedUp, result.UserName, HttpContext);
 
 			return Ok(new AuthResponse(true, result.UserName, null, ReadingPagePath));
 		}
@@ -54,16 +58,21 @@ namespace NovelReader.Controllers
 			{
 				// Said as plainly for a name that does not exist as for one that does (D41).
 				logger.LogWarning("Sign-in locked for {User} ({Minutes} min left)", request.UserName, result.RetryAfterMinutes);
+				await authEvents.RecordAsync(AuthOutcome.SignInLocked, request.UserName, HttpContext, $"{result.RetryAfterMinutes} min left");
 				Response.Headers.RetryAfter = ((int)Math.Ceiling(result.RetryAfter!.Value.TotalSeconds)).ToString();
 				return StatusCode(StatusCodes.Status429TooManyRequests, new AuthResponse(false, null, result.Message, null));
 			}
 
 			if (!result.Succeeded)
 			{
+				// Recorded alike for an unknown name and a wrong password, so neither takes
+				// longer than the other (D41).
+				await authEvents.RecordAsync(AuthOutcome.SignInFailed, request.UserName, HttpContext);
 				return Unauthorized(new AuthResponse(false, null, result.Message, null));
 			}
 
 			await SignInWithCookieAsync(result.UserName!);
+			await authEvents.RecordAsync(AuthOutcome.SignedIn, result.UserName, HttpContext);
 			return Ok(new AuthResponse(true, result.UserName, null, ReadingPagePath));
 		}
 

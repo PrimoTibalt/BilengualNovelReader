@@ -22,11 +22,12 @@ The Angular client (`WebApi/client`) is built by `dotnet build` (the `BuildClien
 
 ```bash
 npx ng build                                  # build into ../wwwroot (type-checks the templates too)
+npx ng build admin                            # the admin panel, into ../admin-ui (D45)
 npx ng build --watch --configuration development
 dotnet build -p:SkipClientBuild=true          # from WebApi/: reuse what is already in wwwroot
 ```
 
-`wwwroot/` is entirely build output — every client build wipes and rewrites it — and is gitignored.
+`wwwroot/` and `admin-ui/` are entirely build output — every client build wipes and rewrites them — and are gitignored.
 Static files are re-read per request, so a client rebuild shows on reload; only an edit to
 the inline script in `index.html` needs a restart (its CSP hash is computed at start-up).
 
@@ -109,6 +110,38 @@ authorization `UseRateLimiter`. Things that break if forgotten:
   novel name must check it too.
 - `AllowedHosts` lists the host names the app answers to.
 
+### The admin panel (D45)
+
+`/Admin`, for the account names under `Admin:Users` in appsettings (`anton`). A **second
+Angular application**, `client/projects/admin`, built into `WebApi/admin-ui/` — deliberately
+**not** `wwwroot`, so `UseStaticFiles` cannot serve it. `AdminController` serves its shell, its
+files (`/Admin/{**path}`, through a `PhysicalFileProvider` rooted at `admin-ui`) and its JSON
+(`/Admin/api/overview`, `/Admin/api/timings`), all behind the `admin` policy. Signed out:
+redirected to sign in (the API answers 401). Signed in but not an admin: **404**, from the
+cookie handler's `OnRedirectToAccessDenied`, so the panel does not reveal itself. The
+reader's app must never link to it or import from it.
+
+Sources, in `WebApi/Monitoring/` unless noted:
+- **Response times.** `ResponseTimeMiddleware` (right after `UseForwardedHeaders`) times HTTP
+  requests, named by endpoint (`POST auth/signin`), else `static files`/`unmatched`; it
+  skips the hub's long-lived connection request. `HubMonitoringFilter` times each hub call as
+  `hub <Method>`. Both record into `ResponseTimeLog` (Domain/Monitoring): per-minute,
+  per-operation `LatencyHistogram`s, log-scale buckets that merge by adding, so p50/p95
+  of any range is a sum of minutes. **Keep operation names a short fixed list**: never put a
+  URL, a user or an id in one.
+- **Sign-in attempts.** `AuthEventRecorder`, called from `AuthController`, the rate limiter's
+  `OnRejected` and the hub's `ChangePassword`. A failed sign-in is recorded the same way
+  whether the name exists or not (D41). Recording failures are logged, never thrown.
+- **Errors.** `ErrorLog`, a logging provider that queues warnings and errors (with the
+  exception text) for `MonitoringWriter`. It ignores `MonitoringWriter`'s own category so a
+  broken store cannot feed itself.
+- **Online.** `ConnectionTracker`, kept by the hub filter's connect/disconnect, in memory.
+- **Readers.** Read live from the vocabulary, review-card and progress stores, per account
+  (`IUserAccountRepository.ListUserNamesAsync`).
+
+`MonitoringWriter` (a hosted service) flushes finished minutes and queued errors every 10 s,
+everything at shutdown, and prunes hourly (timings and errors 30 days, sign-ins 90).
+
 ### Read path (the core flow)
 
 `RealTimeReaderHub.LoadChapter(novelName, chapterNumber)` → `ChapterReader.LoadChapterAsync`:
@@ -156,6 +189,10 @@ Chapter URLs are built as `book/{novelName}/chapter-{chapterNumber}` against the
   key becomes unreadable (D35). **A deploy must carry over both** `novelreader-accounts.db`
   and `novelreader-keys/`. Losing the ring also signs everyone out, because it signs the
   auth cookie too.
+- SQLite (`novelreader-monitoring.db`, beside the accounts database unless
+  `MonitoringConnectionString` says otherwise): the admin panel's `auth_events`, `errors` and
+  `response_times` (D45). Separate so that it can grow, be pruned or be lost without touching
+  the accounts. The deploy script carries it over too.
 
 ### Frontend
 

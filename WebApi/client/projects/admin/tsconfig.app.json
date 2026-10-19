@@ -1,0 +1,10 @@
+/* The admin panel (D45): a second application in this workspace, built on its own by `ng build admin`. */
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

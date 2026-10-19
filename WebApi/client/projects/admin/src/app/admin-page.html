@@ -1,0 +1,210 @@
+<header class="admin-header">
+	<h1 class="admin-title">novel reader <span class="admin-dim">/ admin</span></h1>
+	<div class="admin-header__status">
+		@if (failure(); as message) {
+			<span class="admin-error" role="alert">{{ message }}</span>
+		}
+		<span class="admin-dim">{{ loading() ? "updating…" : "updated " + clockWithSeconds(updatedAt()) }}</span>
+		<button type="button" class="admin-button" [disabled]="loading()" (click)="refresh()">refresh</button>
+		<a class="admin-button" [href]="readerUrl">reader</a>
+	</div>
+</header>
+
+@if (overview(); as data) {
+	<!-- The four numbers worth seeing first. -->
+	<ul class="admin-summary">
+		<li class="admin-summary__item">
+			<span class="admin-summary__value">{{ onlineCount() }}</span>
+			<span class="admin-summary__label">{{ onlineCount() === 1 ? "reader" : "readers" }} online · {{ connectionCount() }} {{ connectionCount() === 1 ? "page" : "pages" }}</span>
+		</li>
+		<li class="admin-summary__item" [class.admin-summary__item--bad]="failedLastDay() > 0">
+			<span class="admin-summary__value">{{ failedLastDay() }}</span>
+			<span class="admin-summary__label">refused sign-ins, 24 h</span>
+		</li>
+		<li class="admin-summary__item" [class.admin-summary__item--bad]="errorsLastDay() > 0">
+			<span class="admin-summary__value">{{ errorsLastDay() }}</span>
+			<span class="admin-summary__label">warnings and errors, 24 h</span>
+		</li>
+		<li class="admin-summary__item">
+			<span class="admin-summary__value">{{ savedWords() }}</span>
+			<span class="admin-summary__label">saved words</span>
+		</li>
+	</ul>
+}
+
+<section class="admin-section">
+	<h2 class="admin-section__title">response times</h2>
+	<div class="admin-toolbar">
+		<div class="admin-toggle" role="group" aria-label="Range">
+			@for (choice of ranges; track choice) {
+				<button type="button" class="admin-toggle__button" [attr.aria-pressed]="range() === choice"
+					(click)="chooseRange(choice)">{{ choice }}</button>
+			}
+		</div>
+		<label class="admin-select">
+			<span class="admin-dim">showing</span>
+			<select [value]="filter()" (change)="chooseFilter($any($event.target).value)">
+				@for (option of filterOptions(); track option.value) {
+					<option [value]="option.value" [selected]="option.value === filter()">{{ option.label }}</option>
+				}
+			</select>
+		</label>
+	</div>
+
+	@if (timings(); as data) {
+		<admin-latency-chart [series]="data.series" [slotMinutes]="data.slotMinutes" />
+
+		<div class="admin-table-wrap">
+			<table class="admin-table">
+				<thead>
+					<tr><th>operation</th><th class="admin-number">calls</th><th class="admin-number">p50</th><th class="admin-number">p95</th></tr>
+				</thead>
+				<tbody>
+					@for (operation of data.operations; track operation.operation) {
+						<tr class="admin-table__row--pick" [class.admin-table__row--chosen]="operation.operation === filter()"
+							(click)="chooseFilter(operation.operation)">
+							<td><button type="button" class="admin-link-button">{{ operation.operation }}</button></td>
+							<td class="admin-number">{{ operation.count }}</td>
+							<td class="admin-number">{{ duration(operation.p50) }}</td>
+							<td class="admin-number">{{ duration(operation.p95) }}</td>
+						</tr>
+					} @empty {
+						<tr><td colspan="4" class="admin-dim">nothing was timed in this range.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+</section>
+
+@if (overview(); as data) {
+	<div class="admin-columns">
+		<section class="admin-section">
+			<h2 class="admin-section__title">online now</h2>
+			@for (reader of data.online; track reader.userName) {
+				<div class="admin-table-wrap">
+					<table class="admin-table">
+						<caption class="admin-table__caption">{{ reader.userName }}</caption>
+						<thead>
+							<tr><th>device</th><th>since</th><th>last active</th><th>address</th></tr>
+						</thead>
+						<tbody>
+							@for (connection of reader.connections; track connection.since) {
+								<tr>
+									<td [attr.title]="connection.userAgent">{{ device(connection.userAgent) }}</td>
+									<td>{{ moment(connection.since) }}</td>
+									<td>{{ ago(connection.lastActive) }}</td>
+									<td>{{ connection.address ?? "–" }}</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			} @empty {
+				<p class="admin-dim">nobody has the reader open.</p>
+			}
+		</section>
+
+		<section class="admin-section">
+			<h2 class="admin-section__title">sign-in attempts</h2>
+			<table class="admin-table admin-table--counts">
+				<thead>
+					<tr><th></th><th class="admin-number">24 h</th><th class="admin-number">7 days</th></tr>
+				</thead>
+				<tbody>
+					@for (code of countedOutcomes; track code) {
+						<tr [class.admin-table__row--bad]="isBadOutcome(code) && (data.signIns.lastDay[code] ?? 0) > 0">
+							<td>{{ outcomeLabel(code) }}</td>
+							<td class="admin-number">{{ data.signIns.lastDay[code] ?? 0 }}</td>
+							<td class="admin-number">{{ data.signIns.lastWeek[code] ?? 0 }}</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</section>
+	</div>
+
+	<section class="admin-section">
+		<h2 class="admin-section__title">recent sign-in attempts</h2>
+		<div class="admin-table-wrap admin-table-wrap--tall">
+			<table class="admin-table">
+				<thead>
+					<tr><th>when</th><th>what</th><th>name</th><th>address</th><th>detail</th></tr>
+				</thead>
+				<tbody>
+					@for (attempt of data.signIns.recent; track $index) {
+						<tr [class.admin-table__row--bad]="isBadOutcome(attempt.outcome)">
+							<td>{{ moment(attempt.at) }}</td>
+							<td>{{ outcomeLabel(attempt.outcome) }}</td>
+							<td>{{ attempt.userName ?? "–" }}</td>
+							<td>{{ attempt.address ?? "–" }}</td>
+							<td class="admin-dim">{{ attempt.detail ?? "" }}</td>
+						</tr>
+					} @empty {
+						<tr><td colspan="5" class="admin-dim">no attempts recorded yet.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	<section class="admin-section">
+		<h2 class="admin-section__title">readers</h2>
+		@for (reader of data.readers; track reader.userName) {
+			<article class="admin-reader">
+				<h3 class="admin-reader__name">{{ reader.userName }}</h3>
+				<p class="admin-reader__stats">
+					<span><strong>{{ reader.savedWords }}</strong> saved words</span>
+					<span class="admin-dim">{{ reader.savedThisWeek }} this week · last {{ ago(reader.lastSavedAt) }}</span>
+				</p>
+				<p class="admin-reader__stats">
+					<span>review:</span>
+					<span><strong>{{ reader.review.due }}</strong> due</span>
+					<span>{{ reader.review.learning }} learning</span>
+					<span>{{ reader.review.mature }} mature</span>
+					<span class="admin-dim">{{ reader.review.cards }} cards, {{ reader.savedWords - reader.review.cards + reader.review.new }} not reviewed yet</span>
+				</p>
+				<div class="admin-table-wrap">
+					<table class="admin-table">
+						<thead>
+							<tr><th>novel</th><th class="admin-number">chapter</th><th class="admin-number">of</th><th>last read</th></tr>
+						</thead>
+						<tbody>
+							@for (novel of reader.novels; track novel.slug) {
+								<tr>
+									<td [attr.title]="novel.slug">{{ novel.title ?? novel.slug }}</td>
+									<td class="admin-number">{{ novel.chapter ?? "–" }}</td>
+									<td class="admin-number">{{ novel.totalChapters ?? "?" }}</td>
+									<td>{{ ago(novel.lastReadAt) }}</td>
+								</tr>
+							} @empty {
+								<tr><td colspan="4" class="admin-dim">no novels opened yet.</td></tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</article>
+		}
+	</section>
+
+	<section class="admin-section">
+		<h2 class="admin-section__title">warnings and errors</h2>
+		@for (error of data.errors; track $index) {
+			<details class="admin-error-entry" [class.admin-error-entry--error]="error.level !== 'Warning'">
+				<summary class="admin-error-entry__summary">
+					<span class="admin-error-entry__when">{{ moment(error.at) }}</span>
+					<span class="admin-error-entry__level">{{ error.level }}</span>
+					<span class="admin-error-entry__category" [attr.title]="error.category">{{ shortCategory(error.category) }}</span>
+					<span class="admin-error-entry__message">{{ firstLine(error.message) }}</span>
+				</summary>
+				<pre class="admin-error-entry__text">{{ error.message }}@if (error.exception) {
+
+{{ error.exception }}}</pre>
+			</details>
+		} @empty {
+			<p class="admin-dim">nothing logged.</p>
+		}
+	</section>
+} @else if (!failure()) {
+	<p class="admin-dim admin-loading">loading…</p>
+}

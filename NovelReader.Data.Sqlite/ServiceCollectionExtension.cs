@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Data.Sqlite;
+using NovelReader.Domain.Monitoring;
 using NovelReader.Domain.RealTimeReader.Accounts;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Translation;
@@ -31,6 +32,19 @@ namespace NovelReader.Data.Sqlite
 			services.AddSingleton<IAssistantSettingsStore>(repository);
 			services.TryAddSingleton(TimeProvider.System);
 			services.AddSingleton<AccountService>();
+		}
+
+		/// <summary>
+		/// Registers the admin panel's store (D45), in its own file — by default beside the
+		/// accounts database, as <c>novelreader-monitoring.db</c> — created if it is missing.
+		/// </summary>
+		public static void AddSqliteMonitoring(this IServiceCollection services, IConfiguration config)
+		{
+			string connectionString = config.GetConnectionString("MonitoringConnectionString")
+				?? $"Data Source={Path.Combine(AccountsDirectory(config), "novelreader-monitoring.db")}";
+
+			SqliteMonitoringStore.EnsureCreated(connectionString);
+			services.AddSingleton<IMonitoringStore>(new SqliteMonitoringStore(connectionString));
 		}
 
 		/// <summary>

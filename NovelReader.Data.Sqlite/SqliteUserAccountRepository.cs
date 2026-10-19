@@ -122,6 +122,23 @@ namespace NovelReader.Data.Sqlite
 			};
 		}
 
+		public async Task<IReadOnlyList<string>> ListUserNamesAsync(CancellationToken cancellationToken = default)
+		{
+			await using SqliteConnection connection = new(connectionString);
+			await connection.OpenAsync(cancellationToken);
+
+			await using SqliteCommand command = connection.CreateCommand();
+			command.CommandText = "SELECT user_name FROM accounts;";
+
+			List<string> names = [];
+			await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+			while (await reader.ReadAsync(cancellationToken))
+			{
+				names.Add(reader.GetString(0));
+			}
+			return names;
+		}
+
 		public async Task<bool> UpdatePasswordHashAsync(string userName, string passwordHash, CancellationToken cancellationToken = default)
 		{
 			await using SqliteConnection connection = new(connectionString);

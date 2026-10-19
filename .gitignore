@@ -492,6 +492,7 @@ $RECYCLE.BIN/
 # TypeScript client build output — sources live in WebApi/src, emitted by tsc
 # The Angular client's build output (WebApi/client -> WebApi/wwwroot).
 WebApi/wwwroot/
+WebApi/admin-ui/
 
 # Local SQLite account store (created on first run).
 *.db

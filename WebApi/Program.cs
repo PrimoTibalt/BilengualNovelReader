@@ -10,6 +10,9 @@ using NovelReader.Domain.RealTimeReader.Review;
 using NovelReader.Domain.RealTimeReader.User;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.SignalR;
+using NovelReader.Domain.Monitoring;
+using NovelReader.Monitoring;
 
 namespace NovelReader
 {
@@ -25,11 +28,17 @@ namespace NovelReader
 
 			var builder = WebApplication.CreateBuilder(args);
 
+			// Warnings and errors, for the admin panel as well as the journal (D45).
+			ErrorLog errorLog = new();
+			builder.Logging.AddProvider(errorLog);
+			builder.Services.AddSingleton(errorLog);
+
 			builder.Services.RegisterHttpClientAndRetriever(builder.Configuration);
 			builder.Services.RegisterDictionaryProviders();
 			builder.Services.AddMongoClient(builder.Configuration);
 			builder.Services.RegisterMongoImplementations();
 			builder.Services.AddSqliteAccounts(builder.Configuration);
+			builder.Services.AddSqliteMonitoring(builder.Configuration);
 			builder.Services.AddSingleton<IBackgroundWorkScheduler, BackgroundWorkScheduler>();
 			builder.Services.AddSingleton<UserRequestGate>();
 			builder.Services.AddSingleton<ChapterPreparationService>();
@@ -38,6 +47,13 @@ namespace NovelReader
 			builder.Services.AddSingleton<VocabularyBaseForms>();
 			builder.Services.AddSingleton(TimeProvider.System);
 			builder.Services.AddSingleton<ReviewService>();
+
+			// The admin panel's sources (D45).
+			builder.Services.AddSingleton<ResponseTimeLog>();
+			builder.Services.AddSingleton<ConnectionTracker>();
+			builder.Services.AddSingleton<HubMonitoringFilter>();
+			builder.Services.AddSingleton<AuthEventRecorder>();
+			builder.Services.AddHostedService<MonitoringWriter>();
 
 			// Also what the auth cookie is signed with, so persisting the keys keeps readers
 			// signed in across restarts as well as keeping their stored API keys readable (D35).
@@ -72,9 +88,23 @@ namespace NovelReader
 					options.Events.OnRedirectToLogin = context =>
 					{
 						if (context.Request.Path.StartsWithSegments("/auth")
-							|| context.Request.Path.StartsWithSegments("/signalr"))
+							|| context.Request.Path.StartsWithSegments("/signalr")
+							|| context.Request.Path.StartsWithSegments(AdminAccess.ApiPrefix))
 						{
 							context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+							return Task.CompletedTask;
+						}
+
+						context.Response.Redirect(context.RedirectUri);
+						return Task.CompletedTask;
+					};
+
+					// A reader who is not an admin is told the admin panel is not there at all (D45).
+					options.Events.OnRedirectToAccessDenied = context =>
+					{
+						if (context.Request.Path.StartsWithSegments(AdminAccess.PathPrefix))
+						{
+							context.Response.StatusCode = StatusCodes.Status404NotFound;
 							return Task.CompletedTask;
 						}
 
@@ -84,9 +114,14 @@ namespace NovelReader
 				});
 
 			builder.Services.AddAuthorization();
+			AdminAccess.AddAdminPolicy(builder.Services, new AdminAccess(builder.Configuration));
 			builder.Services.AddControllersWithViews();
 
-			builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 4);
+			builder.Services.AddSignalR(options =>
+			{
+				options.MaximumParallelInvocationsPerClient = 4;
+				options.AddFilter<HubMonitoringFilter>();
+			});
 			builder.Services.AddAuthRateLimits();
 
 			// nginx, on this machine, says who the client was, over which scheme, and under which
@@ -106,6 +141,8 @@ namespace NovelReader
 
 			// First, so everything after sees the real client address, scheme and path base.
 			app.UseForwardedHeaders();
+			// Next, so a request's time includes everything after the proxy hands it over (D45).
+			app.UseResponseTimes();
 			app.UseSecurityHeaders();
 			app.UseSameOriginRequests();
 

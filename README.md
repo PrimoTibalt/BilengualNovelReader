@@ -49,6 +49,11 @@ you return.
   count, refreshed from the catalogue once a day.
 - **Searches for new novels**, with results as you stop typing.
 - **Accounts.** Sign up, sign in, and a per-reader library and vocabulary.
+- **An admin panel** at `/Admin`, for the accounts listed under `Admin:Users`. It shows p50
+  and p95 response times over 1 hour to 30 days, per operation; who is online; failed
+  sign-ins, lockouts and rate-limited addresses; logged warnings and errors with their stack
+  traces; and each reader's saved words, review progress and novels. It is a separate build
+  that the reader's page never loads, and anyone else gets a 404.
 
 Everything is driven from the keyboard, and every panel is drawn in the same TUI style. On a
 phone the keys become buttons: `☰ navigate` and `>` in the corners, and `d definition` /
@@ -178,7 +183,7 @@ package references** and holds the interfaces, POCOs and pure logic.
 | `NovelReader.Retrievers` | scrapes chapters and queries the catalogue |
 | `NovelReader.Dictionary` | dictionary providers with fallback, MyMemory translation, and the OpenAI-compatible client for the reader's AI |
 | `NovelReader.Data.Mongo` | chapters, vocabulary, bookmarks, prepared-chapter cache |
-| `NovelReader.Data.Sqlite` | user accounts, translation settings, AI settings |
+| `NovelReader.Data.Sqlite` | user accounts, translation settings, AI settings; the admin panel's monitoring data |
 | `WebApi` | ASP.NET Core host and SignalR hub; the Angular client is in `WebApi/client` |
 | `NovelReader.Tests` | xUnit |
 
@@ -208,7 +213,7 @@ This is a working personal reader, not a finished product. Worth knowing:
   that form asks for an email the AI does not use.
 - **Chapter counts are not known per novel**, so the chapter menu shows a window around where
   you are and "next chapter" discovers the end of a novel by trying it.
-- **Accounts have no password reset**, no password change, and no rate limit on sign-in.
+- **Accounts have no password reset.**
 - **Scraping is fragile by nature.** The source site occasionally answers `200` with an empty
   page, and its "this page moved" notice is recognised by its wording — if that wording
   changes, so must the code.

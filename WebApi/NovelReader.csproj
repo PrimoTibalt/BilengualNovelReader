@@ -23,14 +23,17 @@
   </ItemGroup>
 
   <!--
-    Builds the Angular client in client/ into wwwroot before the .NET build. wwwroot is build
-    output, wiped and rewritten by every client build. Requires Node. Build with
-    -p:SkipClientBuild=true to reuse what is already in wwwroot.
+    Builds the Angular workspace in client/ before the .NET build: the reader into wwwroot, and
+    the admin panel (D45) into admin-ui, which is outside wwwroot so that only AdminController
+    can serve it. Both are build output, wiped and rewritten by every client build. Requires
+    Node. Build with -p:SkipClientBuild=true to reuse what is already there.
   -->
   <ItemGroup>
     <ClientSource Include="client\src\**\*" />
+    <ClientSource Include="client\projects\**\*" />
     <ClientSource Include="client\angular.json;client\tsconfig.json;client\tsconfig.app.json;client\package.json;client\package-lock.json" />
     <Content Remove="client\**" />
+    <None Remove="admin-ui\**" />
     <None Remove="client\**" />
     <Compile Remove="client\**" />
   </ItemGroup>
@@ -46,15 +49,16 @@
     <Exec Command="npm ci" WorkingDirectory="$(MSBuildProjectDirectory)\client" />
   </Target>
 
-  <Target Name="BuildClient" DependsOnTargets="NpmInstall" Condition="'$(SkipClientBuild)' != 'true'" BeforeTargets="BeforeBuild;ResolveStaticWebAssetsInputs" Inputs="@(ClientSource)" Outputs="wwwroot\index.html">
-    <Exec Command="npx ng build" WorkingDirectory="$(MSBuildProjectDirectory)\client" />
+  <Target Name="BuildClient" DependsOnTargets="NpmInstall" Condition="'$(SkipClientBuild)' != 'true'" BeforeTargets="BeforeBuild;ResolveStaticWebAssetsInputs" Inputs="@(ClientSource)" Outputs="wwwroot\index.html;admin-ui\index.html">
+    <Exec Command="npx ng build novel-reader" WorkingDirectory="$(MSBuildProjectDirectory)\client" />
+    <Exec Command="npx ng build admin" WorkingDirectory="$(MSBuildProjectDirectory)\client" />
   </Target>
 
   <!-- The client's files did not exist when the project was evaluated, so they are added here,
        after the client build, or a publish from a clean checkout would leave them out. -->
   <Target Name="IncludeClientOutput" AfterTargets="BuildClient" BeforeTargets="ResolveStaticWebAssetsInputs;AssignTargetPaths">
     <ItemGroup>
-      <Content Include="wwwroot\**" Exclude="@(Content)" CopyToPublishDirectory="PreserveNewest" />
+      <Content Include="wwwroot\**;admin-ui\**" Exclude="@(Content)" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 

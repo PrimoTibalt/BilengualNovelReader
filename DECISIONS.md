@@ -1694,3 +1694,56 @@ focused on arrival, so the keyboard does not cover the question.
 gpt-class models but were exercised only against the fake. There is no reader override for a
 verdict the reader disagrees with.
 
+## D45 — An admin panel, kept out of the reader's app
+
+**Status:** Adopted · 2026-10-19
+
+**Context.** The site runs unattended on one server. The owner wanted to see failed sign-ins,
+who is online, the exceptions and their text, saved words, which novels are being read, and
+response times as p50 and p95 graphs. The panel's files were not to be part of the reader's
+app, and nothing of it was to load unless an admin opened it.
+
+**Decision.**
+- **A second Angular application** in the same workspace (`client/projects/admin`), built by
+  `ng build admin` into `WebApi/admin-ui/`, **outside `wwwroot`**. `UseStaticFiles` cannot
+  reach it. `AdminController` serves its shell at `/Admin` and its files at `/Admin/{path}`
+  behind the `admin` policy, and its JSON at `/Admin/api/overview` and `/Admin/api/timings`.
+  The reader's app has no link to it and never loads any of it.
+- **Who:** the names under `Admin:Users` (`anton`), case-insensitive. A signed-out visitor is
+  sent to sign in (the API answers 401). A signed-in reader who is not an admin gets **404**
+  everywhere under `/Admin`, so the panel does not reveal itself. Hashed files are cached as
+  `private`.
+- **Response times:** a middleware times each HTTP request, named by its endpoint
+  (`POST auth/signin`), or as `static files`/`unmatched`. A hub filter times each hub call
+  (`hub LoadChapter`), because the reading page does nearly everything over one long-lived
+  connection, which the middleware skips. Durations go into per-minute, per-operation
+  histograms on a log scale (`LatencyHistogram`, 20%-wide buckets, read back within about
+  ±10%). Those merge by addition, so a 30-day graph is a sum of minutes rather than a list of
+  requests. The minute under way is in memory. Finished minutes are written every 10 s, and the
+  current one at shutdown.
+- **Sign-ins:** sign-in, sign-up, lockout, rate-limit refusals and password-change refusals are
+  recorded with the name as typed and the client's address. An unknown name and a wrong
+  password are one outcome and are recorded alike, so D41's equal timing holds.
+- **Errors:** a logging provider queues every warning and error, with the exception's full
+  text, and the writer stores them. If the queue overflows the oldest are dropped; the journal
+  still has everything.
+- **Online:** open hub connections, in memory, with device, address and the last hub call.
+- **Readers:** per account, saved words, review cards (due, learning, mature) and every novel
+  with its bookmark, read from the existing stores.
+- **Storage:** a separate SQLite file, `novelreader-monitoring.db`, beside the accounts
+  database. It is pruned hourly: timings and errors after 30 days, sign-in events after 90,
+  and at most 2000 errors. Losing it loses nothing a reader would miss, and it never touches
+  the accounts file.
+
+**Verified.** 11 unit tests cover the histogram, the report's slots and filters, the hand-off of
+finished minutes from memory to the store, two processes writing one minute, and pruning; all
+298 pass. Against scratch databases, a browser checked the access rules. Signed out, `/Admin`
+redirected to sign-in and the API answered 401. A non-admin got 404 for the page, the API and a
+hashed file, and neither reader's page requested anything under `/Admin`. The panel showed the
+online reader, 10 wrong passwords, 6 lockouts and 1 rate-limited address (sent with a spoofed
+`X-Forwarded-For` from loopback), the lockout warnings with their text, every reader's words
+and novels, and timed hub calls. There were no console or CSP errors, and nothing overflowed at
+phone width. A graceful stop wrote the minute under way.
+
+**Not done.** No alerting: the panel shows what happened but tells no one. Nothing watches
+from outside, so the panel cannot report that the site itself is down.

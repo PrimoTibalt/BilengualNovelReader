@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using NovelReader.Controllers;
+using NovelReader.Domain.Monitoring;
+using NovelReader.Monitoring;
 
 namespace NovelReader
 {
@@ -46,6 +48,10 @@ namespace NovelReader
 						int minutes = (int)Math.Ceiling(retryAfter.TotalMinutes);
 						wait = minutes <= 1 ? "a minute" : $"{minutes} minutes";
 					}
+
+					// No name: the body is not read for a refused request, which is the point of refusing it.
+					await rejected.HttpContext.RequestServices.GetRequiredService<AuthEventRecorder>().RecordAsync(
+						AuthOutcome.RateLimited, null, rejected.HttpContext, rejected.HttpContext.Request.Path.Value);
 
 					await rejected.HttpContext.Response.WriteAsJsonAsync(
 						new AuthResponse(false, null, $"Too many attempts from your network. Try again in {wait}.", null),

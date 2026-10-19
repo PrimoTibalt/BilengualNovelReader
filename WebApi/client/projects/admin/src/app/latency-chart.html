@@ -1,0 +1,35 @@
+<p class="chart-readout" aria-live="polite">
+	@if (readout(); as text) {
+		{{ text }}
+	} @else {
+		<span class="chart-legend chart-legend--p95">p95</span>
+		<span class="chart-legend chart-legend--p50">p50</span>
+		<span class="chart-legend chart-legend--count">calls</span>
+	}
+</p>
+
+@if (width() > 0) {
+	<svg class="chart" [attr.width]="width()" [attr.height]="height" role="img"
+		aria-label="Median and 95th-percentile response times over the chosen range"
+		(pointermove)="onPointer($event)" (pointerdown)="onPointer($event)" (pointerleave)="onLeave()">
+		@for (tick of ticks(); track tick.label) {
+			<line class="chart-grid" [attr.x1]="margin.left" [attr.x2]="margin.left + plotWidth()"
+				[attr.y1]="tick.y" [attr.y2]="tick.y" />
+			<text class="chart-axis chart-axis--y" [attr.x]="margin.left - 6" [attr.y]="tick.y">{{ tick.label }}</text>
+		}
+		@for (bar of bars(); track bar.x) {
+			<rect class="chart-bar" [attr.x]="bar.x" [attr.y]="bar.y" [attr.width]="bar.width" [attr.height]="bar.height" />
+		}
+		@for (label of labels(); track label.x) {
+			<text class="chart-axis chart-axis--x" [attr.x]="label.x" [attr.y]="plotBottom + 16">{{ label.text }}</text>
+		}
+		@if (guide(); as x) {
+			<line class="chart-guide" [attr.x1]="x" [attr.x2]="x" [attr.y1]="margin.top" [attr.y2]="plotBottom" />
+		}
+		<path class="chart-line chart-line--p95" [attr.d]="p95Path()" />
+		<path class="chart-line chart-line--p50" [attr.d]="p50Path()" />
+		@if (empty()) {
+			<text class="chart-empty" [attr.x]="margin.left + plotWidth() / 2" [attr.y]="margin.top + plotHeight / 2">no calls in this range</text>
+		}
+	</svg>
+}

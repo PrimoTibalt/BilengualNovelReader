@@ -19,10 +19,16 @@ namespace NovelReader.Controllers
 
 		private const string DefaultBase = "<base href=\"/\"/>";
 
-		public static IActionResult Serve(ControllerBase controller, IWebHostEnvironment environment)
+		public static IActionResult Serve(ControllerBase controller, IWebHostEnvironment environment) =>
+			Serve(controller, Path.Combine(environment.WebRootPath, FileName), string.Empty);
+
+		/// <summary>
+		/// A shell from another build — the admin panel's (D45) — whose files are served under
+		/// <paramref name="mountedAt"/> (<c>/Admin</c>) rather than at the root.
+		/// </summary>
+		public static IActionResult Serve(ControllerBase controller, string path, string mountedAt)
 		{
-			string path = Path.Combine(environment.WebRootPath, FileName);
-			string pathBase = HtmlEncoder.Default.Encode(controller.Request.PathBase.Value ?? string.Empty);
+			string pathBase = HtmlEncoder.Default.Encode((controller.Request.PathBase.Value ?? string.Empty) + mountedAt);
 			string html = System.IO.File
 				.ReadAllText(path)
 				.Replace(DefaultBase, $"<base href=\"{pathBase}/\"/>");

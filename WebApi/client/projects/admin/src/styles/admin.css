@@ -1,0 +1,431 @@
+/*
+ * The admin panel (D45), in the reader's TUI palette (tui.css comes first in the build). A
+ * global stylesheet like the reader's: the CSP allows no component styles.
+ */
+
+body.admin-page {
+	margin: 0;
+	padding: 16px;
+	background: var(--tui-bg);
+	color: var(--tui-text);
+	font-family: var(--tui-mono);
+	font-size: 14px;
+	line-height: 1.45;
+}
+
+admin-root,
+admin-latency-chart {
+	display: block;
+	max-width: 1100px;
+	margin: 0 auto;
+}
+
+.admin-dim {
+	color: var(--tui-dim);
+}
+
+.admin-error {
+	color: var(--tui-error);
+}
+
+.admin-loading {
+	margin-top: 2em;
+}
+
+.admin-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px 16px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.admin-title {
+	margin: 0;
+	font-size: 1.15em;
+	font-weight: normal;
+	color: var(--tui-accent);
+}
+
+.admin-header__status {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px 12px;
+}
+
+.admin-button,
+.admin-toggle__button {
+	padding: 2px 10px;
+	border: 1px solid var(--tui-border);
+	background: transparent;
+	color: var(--tui-text);
+	font: inherit;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.admin-button:hover,
+.admin-toggle__button:hover {
+	color: var(--tui-accent);
+	border-color: var(--tui-accent);
+}
+
+.admin-button:disabled {
+	color: var(--tui-dim);
+	border-color: var(--tui-rule);
+	cursor: default;
+}
+
+.admin-summary {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	gap: 12px;
+	margin: 16px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.admin-summary__item {
+	display: flex;
+	flex-direction: column;
+	padding: 10px 12px;
+	border: 1px solid var(--tui-rule);
+}
+
+.admin-summary__item--bad {
+	border-color: var(--tui-error);
+}
+
+.admin-summary__value {
+	font-size: 1.6em;
+	color: var(--tui-accent);
+}
+
+.admin-summary__item--bad .admin-summary__value {
+	color: var(--tui-error);
+}
+
+.admin-summary__label {
+	color: var(--tui-dim);
+}
+
+.admin-section {
+	margin-top: 24px;
+	min-width: 0;
+}
+
+.admin-section__title {
+	margin: 0 0 10px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--tui-rule);
+	font-size: 1em;
+	font-weight: normal;
+	color: var(--tui-accent);
+}
+
+.admin-columns {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+	gap: 0 24px;
+}
+
+.admin-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 16px;
+	margin-bottom: 8px;
+}
+
+.admin-toggle {
+	display: flex;
+}
+
+.admin-toggle__button + .admin-toggle__button {
+	border-left: none;
+}
+
+.admin-toggle__button[aria-pressed="true"] {
+	background: var(--tui-text);
+	border-color: var(--tui-text);
+	color: var(--tui-bg);
+}
+
+.admin-select {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+
+.admin-select select {
+	max-width: 100%;
+	min-width: 0;
+	padding: 2px 4px;
+	border: 1px solid var(--tui-border);
+	background: var(--tui-bg);
+	color: var(--tui-text);
+	font: inherit;
+}
+
+/* Tables scroll inside their own box, never the page. */
+.admin-table-wrap {
+	overflow-x: auto;
+	margin-top: 8px;
+}
+
+.admin-table-wrap--tall {
+	max-height: 420px;
+	overflow-y: auto;
+}
+
+.admin-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.admin-table--counts {
+	width: auto;
+	min-width: min(100%, 360px);
+}
+
+.admin-table th,
+.admin-table td {
+	padding: 3px 10px 3px 0;
+	text-align: left;
+	white-space: nowrap;
+	vertical-align: top;
+}
+
+.admin-table th {
+	color: var(--tui-dim);
+	font-weight: normal;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.admin-table-wrap--tall thead th {
+	position: sticky;
+	top: 0;
+	background: var(--tui-bg);
+}
+
+.admin-table__caption {
+	text-align: left;
+	color: var(--tui-text);
+	padding-bottom: 2px;
+}
+
+.admin-number {
+	text-align: right !important;
+	font-variant-numeric: tabular-nums;
+}
+
+.admin-table__row--bad td {
+	color: var(--tui-error);
+}
+
+.admin-table__row--pick {
+	cursor: pointer;
+}
+
+.admin-table__row--pick:hover td,
+.admin-table__row--chosen td {
+	background: var(--tui-selection);
+}
+
+.admin-link-button {
+	padding: 0;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.admin-table__row--chosen .admin-link-button {
+	color: var(--tui-accent);
+}
+
+.admin-reader {
+	padding: 10px 0 14px;
+}
+
+.admin-reader + .admin-reader {
+	border-top: 1px dashed var(--tui-rule);
+}
+
+.admin-reader__name {
+	margin: 0 0 4px;
+	font-size: 1em;
+	font-weight: normal;
+	color: var(--tui-accent);
+}
+
+.admin-reader__stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 14px;
+	margin: 2px 0;
+}
+
+.admin-reader__stats strong {
+	color: var(--tui-accent);
+	font-weight: normal;
+}
+
+.admin-error-entry {
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.admin-error-entry__summary {
+	display: flex;
+	gap: 12px;
+	padding: 4px 0;
+	cursor: pointer;
+	list-style: none;
+	min-width: 0;
+}
+
+.admin-error-entry__summary::-webkit-details-marker {
+	display: none;
+}
+
+.admin-error-entry__summary::before {
+	content: "+";
+	color: var(--tui-dim);
+}
+
+.admin-error-entry[open] > .admin-error-entry__summary::before {
+	content: "−";
+}
+
+.admin-error-entry__when,
+.admin-error-entry__level,
+.admin-error-entry__category {
+	flex: none;
+	color: var(--tui-dim);
+}
+
+.admin-error-entry--error .admin-error-entry__level {
+	color: var(--tui-error);
+}
+
+.admin-error-entry__message {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.admin-error-entry__text {
+	margin: 0 0 8px;
+	padding: 8px;
+	max-height: 480px;
+	overflow: auto;
+	background: #151515;
+	border: 1px solid var(--tui-rule);
+	font: inherit;
+	font-size: 0.9em;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* The chart. */
+
+.chart-readout {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 14px;
+	min-height: 1.45em;
+	margin: 4px 0;
+	color: var(--tui-text);
+}
+
+.chart-legend::before {
+	content: "";
+	display: inline-block;
+	width: 14px;
+	height: 0;
+	margin-right: 6px;
+	vertical-align: middle;
+	border-top: 2px solid currentColor;
+}
+
+.chart-legend--p95 {
+	color: var(--tui-accent);
+}
+
+.chart-legend--p50 {
+	color: var(--tui-text);
+}
+
+.chart-legend--count {
+	color: #4a4a4a;
+}
+
+.chart-legend--count::before {
+	height: 8px;
+	width: 8px;
+	border: none;
+	background: currentColor;
+}
+
+.chart {
+	display: block;
+	touch-action: pan-y;
+}
+
+.chart-grid {
+	stroke: var(--tui-rule);
+	stroke-width: 1;
+}
+
+.chart-axis {
+	fill: var(--tui-dim);
+	font-family: var(--tui-mono);
+	font-size: 11px;
+}
+
+.chart-axis--y {
+	text-anchor: end;
+	dominant-baseline: middle;
+}
+
+.chart-axis--x {
+	text-anchor: middle;
+}
+
+.chart-bar {
+	fill: #3a3a3a;
+}
+
+.chart-line {
+	fill: none;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.chart-line--p95 {
+	stroke: var(--tui-accent);
+}
+
+.chart-line--p50 {
+	stroke: var(--tui-text);
+}
+
+.chart-guide {
+	stroke: var(--tui-dim);
+	stroke-dasharray: 3 3;
+}
+
+.chart-empty {
+	fill: var(--tui-dim);
+	font-family: var(--tui-mono);
+	font-size: 12px;
+	text-anchor: middle;
+}

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using NovelReader.Domain.Monitoring;
 using NovelReader.Domain.RealTimeReader.Accounts;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Definitions;
@@ -9,6 +10,7 @@ using NovelReader.Domain.RealTimeReader.Review;
 using NovelReader.Domain.RealTimeReader.Translation;
 using NovelReader.Domain.RealTimeReader.User;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
+using NovelReader.Monitoring;
 
 namespace NovelReader
 {
@@ -35,6 +37,7 @@ namespace NovelReader
 		AssistantSettingsService assistantSettings,
 		AccountService accountService,
 		ReviewService reviewService,
+		AuthEventRecorder authEvents,
 		ILogger<RealTimeReaderHub> logger) : Hub
 	{
 		/// <summary>Where a reader with no history starts.</summary>
@@ -390,11 +393,14 @@ namespace NovelReader
 				if (result.Failure == AccountFailure.CurrentPasswordWrong)
 				{
 					logger.LogWarning("Password change refused for {User}: wrong current password", userName);
+					await authEvents.RecordAsync(AuthOutcome.PasswordChangeRefused, userName, Context.GetHttpContext());
 				}
 
 				if (result.Failure == AccountFailure.LockedOut)
 				{
 					logger.LogWarning("Password change locked for {User} ({Minutes} min left)", userName, result.RetryAfterMinutes);
+					await authEvents.RecordAsync(
+						AuthOutcome.PasswordChangeLocked, userName, Context.GetHttpContext(), $"{result.RetryAfterMinutes} min left");
 					return new PasswordChangeResponse(PasswordChangeResponse.Locked, result.RetryAfterMinutes);
 				}
 

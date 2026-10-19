@@ -63,6 +63,9 @@ namespace NovelReader.Tests
 			return Task.FromResult(account);
 		}
 
+		public Task<IReadOnlyList<string>> ListUserNamesAsync(CancellationToken cancellationToken = default) =>
+			Task.FromResult<IReadOnlyList<string>>([.. accounts.Values.Select(account => account.UserName)]);
+
 		public Task<bool> UpdatePasswordHashAsync(string userName, string passwordHash, CancellationToken cancellationToken = default)
 		{
 			if (!accounts.TryGetValue(userName, out UserAccount? account))
