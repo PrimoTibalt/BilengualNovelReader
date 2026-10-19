@@ -6,20 +6,8 @@ namespace NovelReader.Controllers
 	[Controller]
 	[Route("[controller]")]
 	[AllowAnonymous]
-	public class LoginController : ControllerBase
+	public class LoginController(IWebHostEnvironment environment) : ControllerBase
 	{
-		private readonly IWebHostEnvironment _environment;
-		private readonly AssetVersion _assetVersion;
-
-		public LoginController(IWebHostEnvironment environment, AssetVersion assetVersion)
-		{
-			_environment = environment;
-			_assetVersion = assetVersion;
-		}
-
-		public IActionResult Index()
-		{
-			return VersionedPage.Serve(this, _environment, _assetVersion, "login.html", Request.PathBase);
-		}
+		public IActionResult Index() => ClientShell.Serve(this, environment);
 	}
 }

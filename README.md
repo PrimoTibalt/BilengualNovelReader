@@ -27,6 +27,13 @@ you return.
 - **Lets you set the page up.** The settings drawer (`c`, or the `>` button in the top-left
   corner on a phone) has a font-size slider, a separate chapter-title size slider, and hex fields for the background and text colours. They are
   kept per device and applied before the page first paints. One button resets them all.
+- **Reviews your vocabulary, Anki-style.** With your own AI set up, the settings drawer opens
+  with a `review` section: how many words are due and new, and `start review`. The review
+  opens over the page. Anki's schedule decides which words come back when; how well you know a
+  word decides how it is tested. New words are matched to one-line definitions your AI wrote.
+  Words you know are explained in your own words, typed or spoken. Words you know well are used
+  in a sentence of your own, or — if you have picked a translation language — translated from a
+  sentence in that language. Your AI judges the free answers.
 - **Remembers your vocabulary.** Saved words are underlined in every chapter, in all their
   forms: save `sneered` and `sneer`, `sneers` and `sneering` are underlined too, as is `ran`
   for a saved `run`. Clicking one reopens the word you saved.
@@ -70,8 +77,8 @@ count keep their place:
 ./run.sh
 ```
 
-That starts MongoDB in a container, restores the SignalR client, builds everything (including
-the TypeScript), and opens the app at <http://localhost:5261>. Sign up, and you start reading.
+That starts MongoDB in a container, builds everything (including the Angular client), and opens
+the app at <http://localhost:5261>. Sign up, and you start reading.
 
 ```bash
 ./run.sh --https     # the https profile instead
@@ -88,7 +95,7 @@ The Mongo container is left running after `Ctrl-C` so cached chapters survive a 
 
 - **.NET 10 SDK**, plus the ASP.NET Core runtime and targeting pack. On Arch:
   `sudo pacman -S aspnet-runtime aspnet-targeting-pack`
-- **Node.js** — the TypeScript client is compiled during `dotnet build`.
+- **Node.js** — the Angular client is built during `dotnet build`.
 - **Podman** — for the MongoDB container.
 
 Accounts live in a local SQLite file created on first run. Nothing else needs setting up.
@@ -96,8 +103,8 @@ Accounts live in a local SQLite file created on first run. Nothing else needs se
 ### Running the tests
 
 ```bash
-dotnet test NovelReader.sln     # 162 tests
-cd WebApi && npm run typecheck  # client types
+dotnet test NovelReader.sln             # 287 tests
+cd WebApi/client && npx ng build        # the client, type-checked
 ```
 
 ## Keyboard
@@ -146,6 +153,17 @@ and the bindings underneath come back untouched when it closes.
 | `/` | filter — or, on the search screen, query the catalogue |
 | `Esc` | back one screen, and close at the root |
 
+**In the review**
+
+| Key | |
+|---|---|
+| `j` / `k` | move down / up a side of a match |
+| `h` / `l` | the other side |
+| `Enter` | pick a word or a meaning; type an answer (Enter again checks it, Shift+Enter starts a new line); next |
+| `v` | dictate the answer (Chromium and Safari; on a phone the keyboard's own mic works anywhere) |
+| `x` | don't know — show the answer |
+| `Esc` | leave the answer field, or close the review |
+
 In the chapter list you can type **any** chapter number, including one outside the range shown,
 and it will try to fetch it.
 
@@ -161,12 +179,12 @@ package references** and holds the interfaces, POCOs and pure logic.
 | `NovelReader.Dictionary` | dictionary providers with fallback, MyMemory translation, and the OpenAI-compatible client for the reader's AI |
 | `NovelReader.Data.Mongo` | chapters, vocabulary, bookmarks, prepared-chapter cache |
 | `NovelReader.Data.Sqlite` | user accounts, translation settings, AI settings |
-| `WebApi` | ASP.NET Core host, SignalR hub, and the TypeScript client |
+| `WebApi` | ASP.NET Core host and SignalR hub; the Angular client is in `WebApi/client` |
 | `NovelReader.Tests` | xUnit |
 
-The frontend is TypeScript with **no framework and no bundler** — `tsc` emits browser-native
-ES modules straight into `wwwroot/`. The four panels (definition box, navigation menu, settings
-drawer, login) share one palette in `wwwroot/tui.css`. The settings drawer is a list of
+The frontend is **Angular** (standalone components, signals, zoneless), built into `wwwroot/`
+with content-hashed file names. The panels (definition box, navigation menu, settings drawer,
+review, login) share one palette in `client/src/styles/tui.css`. The settings drawer is a list of
 independent sections, so adding an option means adding a section. The drawer starts scrolling
 once its sections no longer fit the screen.
 

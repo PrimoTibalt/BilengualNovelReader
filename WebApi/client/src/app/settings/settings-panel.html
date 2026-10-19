@@ -1,0 +1,13 @@
+<!-- The page beside the drawer: dimmed, and a tap on it closes the drawer, as in any phone
+     app's side menu. -->
+<div class="settings-scrim" [hidden]="!isOpen()" (click)="close()"></div>
+<aside #panel class="settings-panel" id="settings-panel" role="dialog" aria-label="Settings"
+	[hidden]="!isOpen()" (keydown)="onKeyDown($event)" (focusin)="onFocusIn($event)" (focusout)="onFocusOut()">
+	<header class="settings-panel__header">
+		<span class="settings-panel__title">settings</span>
+	</header>
+	<div #body class="settings-panel__body">
+		<ng-content />
+	</div>
+	<footer class="settings-panel__hints">{{ hints() }}</footer>
+</aside>

@@ -1,0 +1,87 @@
+@if (isOpen()) {
+	<div #root class="definition-box" role="dialog" [attr.aria-label]="'Definition of ' + heading()">
+		<div class="definition-box__panel">
+			<header class="definition-box__header">
+				<span class="definition-box__term">{{ heading() }}</span>
+				<span class="definition-box__counter">{{ counter() }}</span>
+			</header>
+
+			<!-- The form needs more than the three lines a definition gets (D27); the height rule is
+			     relaxed for it in CSS rather than measured here. -->
+			<div #body class="definition-box__body" [class.definition-box__body--form]="mode() === 'settings'">
+				@if (mode() === "settings") {
+					@if (settings(); as form) {
+						<!-- One line, and no explaining: on a phone every line of prose here is a line of
+						     the language list pushed behind the soft keyboard. -->
+						<p class="definition-box__form-intro">Translation needs an email and a language.</p>
+						<label class="definition-box__form-row">
+							<span class="definition-box__form-label">email</span>
+							<input #email type="email" class="definition-box__field" placeholder="you@example.com"
+								autocomplete="email" spellcheck="false" aria-label="Email for the translation service"
+								[value]="form.email ?? ''" (keydown)="onEmailKey($event)" />
+						</label>
+						<!-- Directly under the email: on a phone the soft keyboard covers everything below
+						     the fields, and a refusal nobody can see is no refusal at all. -->
+						<p class="definition-box__form-message" role="alert">{{ formMessage() }}</p>
+						<label class="definition-box__form-row">
+							<span class="definition-box__form-label">language</span>
+							<input #filter type="text" class="definition-box__field" placeholder="type to filter…"
+								spellcheck="false" aria-label="Filter languages"
+								(input)="languageFilter.set(filter.value)" (keydown)="onFilterKey($event)" />
+						</label>
+						<select #list class="definition-box__list" [size]="languageRows"
+							aria-label="Language to translate into" (keydown)="onListKey($event)">
+							@for (language of languageOptions(); track language.code) {
+								<option [value]="language.code" [selected]="language.code === preferredLanguage()">{{ language.name }}  ({{ language.code }})</option>
+							}
+						</select>
+					}
+				} @else if (status() !== "ready" || !view()) {
+					<p [class]="status() === 'lost' ? 'definition-box__error' : 'definition-box__loading'">{{ waitingMessage() }}</p>
+					<!-- A translation asked for alongside the definition arrives first and is shown first;
+					     the definition keeps its own `loading…` line above it until it lands (D32). -->
+					<ng-container *ngTemplateOutlet="translationBlock" />
+				} @else if (!view()!.found || !sense()) {
+					<p class="definition-box__empty">No definition found.</p>
+					<!-- A word with no dictionary entry is exactly when a translation is worth seeing. -->
+					<ng-container *ngTemplateOutlet="translationBlock" />
+				} @else {
+					@if (sense()!.partOfSpeech) {
+						<span class="definition-box__pos">{{ sense()!.partOfSpeech!.toLowerCase() }}</span>
+					}
+					<p class="definition-box__text">{{ sense()!.text }}</p>
+					@if (sense()!.example) {
+						<p class="definition-box__example">{{ sense()!.example }}</p>
+					}
+					<ng-container *ngTemplateOutlet="translationBlock" />
+				}
+			</div>
+
+			<!-- The tap toolbar sits above the key-hint bar; CSS shows exactly one of the two,
+			     buttons on touch and the hint text on a keyboard. -->
+			<div class="definition-box__buttons">
+				@for (button of buttons(); track button.label) {
+					<button type="button" class="definition-box__button" [attr.aria-label]="button.ariaLabel"
+						[disabled]="button.disabled ?? false" (click)="button.run()">{{ button.label }}</button>
+				}
+			</div>
+			<footer class="definition-box__hints">{{ hints() }}</footer>
+		</div>
+		<div class="definition-box__tail"></div>
+	</div>
+}
+
+<ng-template #translationBlock>
+	@if (translationPending() || translation()) {
+		<div class="definition-box__translation" [class.definition-box__translation--pending]="translationPending()">
+			<span class="definition-box__translation-label">translation</span>
+			<p class="definition-box__translation-text"
+				[class.definition-box__translation-text--failed]="!!translation()?.error">
+				{{ translationPending() ? "translating…" : (translation()?.error ?? translation()?.text ?? "") }}
+			</p>
+			@if (!translation()?.error && translation()?.note) {
+				<span class="definition-box__translation-note">{{ translation()!.note }}</span>
+			}
+		</div>
+	}
+</ng-template>

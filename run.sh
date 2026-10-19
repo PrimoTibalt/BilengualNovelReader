@@ -7,10 +7,9 @@
 #   ./run.sh --stop       # stop the Mongo container and exit
 #   ./run.sh --clean      # remove the Mongo container AND its data volume, then exit
 #
-# Does the three things `dotnet build` does not cover (see CLAUDE.md):
+# Does the two things `dotnet build` does not cover (see CLAUDE.md):
 #   1. runs MongoDB in a rootless podman container matching appsettings.json
-#   2. restores the SignalR client JS with libman (wwwroot/lib is gitignored)
-#   3. builds + runs the app (the csproj compiles the TypeScript client itself)
+#   2. builds + runs the app (the csproj builds the Angular client itself)
 #
 set -euo pipefail
 
@@ -73,7 +72,7 @@ done
 # ---------------------------------------------------------------- prerequisites
 require podman "Install it: sudo pacman -S podman"
 require dotnet "Install the .NET 10 SDK plus: sudo pacman -S aspnet-runtime aspnet-targeting-pack"
-require node   "The client TypeScript needs it: sudo pacman -S nodejs npm"
+require node   "The Angular client needs it: sudo pacman -S nodejs npm"
 
 # ------------------------------------------------------------------------ mongo
 if podman container exists "$MONGO_CONTAINER" 2>/dev/null; then
@@ -107,23 +106,6 @@ for attempt in $(seq 1 60); do
   fi
   sleep 1
 done
-
-# --------------------------------------------------------- signalr client (libman)
-SIGNALR_JS="WebApi/wwwroot/lib/microsoft-signalr/signalr.min.js"
-if [ ! -f "$SIGNALR_JS" ]; then
-  LIBMAN="$(command -v libman || true)"
-  [ -n "$LIBMAN" ] || LIBMAN="$HOME/.dotnet/tools/libman"
-  if [ ! -x "$LIBMAN" ]; then
-    log "Installing the libman CLI"
-    dotnet tool install -g Microsoft.Web.LibraryManager.Cli >/dev/null
-    LIBMAN="$HOME/.dotnet/tools/libman"
-  fi
-  log "Restoring the SignalR client into wwwroot/lib"
-  (cd WebApi && "$LIBMAN" restore)
-  [ -f "$SIGNALR_JS" ] || die "libman restore finished but $SIGNALR_JS is missing."
-else
-  log "SignalR client already present"
-fi
 
 # -------------------------------------------------------------------------- run
 URL_HINT="http://0.0.0.0:5261/ReadingPage"

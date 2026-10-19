@@ -5,18 +5,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>098c368f-d5fa-43b9-8053-297b7e3e91aa</UserSecretsId>
+    <!-- wwwroot is served by UseStaticFiles (ClientAssets), not MapStaticAssets, so the static
+         web assets pipeline would only add .gz/.br copies and a manifest that nothing reads. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="wwwroot\lib\microsoft-signalr\signalr.min.js" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="wwwroot\fonts\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,29 +23,39 @@
   </ItemGroup>
 
   <!--
-    Compiles the TypeScript in src/ into wwwroot before the .NET build.
-    Requires Node. Build with -p:SkipClientBuild=true to reuse the JS already on disk.
+    Builds the Angular client in client/ into wwwroot before the .NET build. wwwroot is build
+    output, wiped and rewritten by every client build. Requires Node. Build with
+    -p:SkipClientBuild=true to reuse what is already in wwwroot.
   -->
   <ItemGroup>
-    <ClientSource Include="src\**\*.ts" />
-    <ClientSource Include="tsconfig.json" />
-    <ClientSource Include="package.json" />
-    <ClientSource Include="package-lock.json" />
+    <ClientSource Include="client\src\**\*" />
+    <ClientSource Include="client\angular.json;client\tsconfig.json;client\tsconfig.app.json;client\package.json;client\package-lock.json" />
+    <Content Remove="client\**" />
+    <None Remove="client\**" />
+    <Compile Remove="client\**" />
   </ItemGroup>
 
   <Target Name="EnsureNodeAvailable" Condition="'$(SkipClientBuild)' != 'true'">
     <Exec Command="node --version" WorkingDirectory="$(MSBuildProjectDirectory)" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="_NodeExitCode" />
     </Exec>
-    <Error Condition="'$(_NodeExitCode)' != '0'" Text="Node.js is required to compile the TypeScript client. Install it (sudo pacman -S nodejs npm), or build with -p:SkipClientBuild=true to reuse the JavaScript already in wwwroot." />
+    <Error Condition="'$(_NodeExitCode)' != '0'" Text="Node.js is required to build the Angular client. Install it (sudo pacman -S nodejs npm), or build with -p:SkipClientBuild=true to reuse what is already in wwwroot." />
   </Target>
 
-  <Target Name="NpmInstall" DependsOnTargets="EnsureNodeAvailable" Condition="'$(SkipClientBuild)' != 'true'" Inputs="package.json;package-lock.json" Outputs="node_modules\.package-lock.json">
-    <Exec Command="npm ci" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  <Target Name="NpmInstall" DependsOnTargets="EnsureNodeAvailable" Condition="'$(SkipClientBuild)' != 'true'" Inputs="client\package.json;client\package-lock.json" Outputs="client\node_modules\.package-lock.json">
+    <Exec Command="npm ci" WorkingDirectory="$(MSBuildProjectDirectory)\client" />
   </Target>
 
-  <Target Name="CompileClientTypeScript" DependsOnTargets="NpmInstall" Condition="'$(SkipClientBuild)' != 'true'" BeforeTargets="BeforeBuild;ResolveStaticWebAssetsInputs" Inputs="@(ClientSource)" Outputs="wwwroot\realTimeReader.js">
-    <Exec Command="npx tsc --project tsconfig.json" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  <Target Name="BuildClient" DependsOnTargets="NpmInstall" Condition="'$(SkipClientBuild)' != 'true'" BeforeTargets="BeforeBuild;ResolveStaticWebAssetsInputs" Inputs="@(ClientSource)" Outputs="wwwroot\index.html">
+    <Exec Command="npx ng build" WorkingDirectory="$(MSBuildProjectDirectory)\client" />
+  </Target>
+
+  <!-- The client's files did not exist when the project was evaluated, so they are added here,
+       after the client build, or a publish from a clean checkout would leave them out. -->
+  <Target Name="IncludeClientOutput" AfterTargets="BuildClient" BeforeTargets="ResolveStaticWebAssetsInputs;AssignTargetPaths">
+    <ItemGroup>
+      <Content Include="wwwroot\**" Exclude="@(Content)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
   </Target>
 
 </Project>

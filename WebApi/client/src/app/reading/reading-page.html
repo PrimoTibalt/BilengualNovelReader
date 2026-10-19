@@ -1,0 +1,85 @@
+<!-- Built by NavigationMenu when `n` opens it. -->
+<nav id="navigation-container" aria-label="Navigate through your novels, search new novels" [hidden]="!navigationMenu().isOpen()">
+	<app-navigation-menu />
+</nav>
+
+<!--
+	The settings drawer's way in, top-left — the mirror of the navigation hint top-right. On a
+	keyboard it is drawn exactly like that hint, `c settings`, and is decorative: the key does the
+	work. On touch it becomes a button showing `>` while the drawer is shut and `<` while it is
+	open (D35, D36).
+-->
+<button id="settings-affordance" class="settings-affordance" type="button"
+	aria-controls="settings-panel"
+	[attr.aria-expanded]="settingsPanel().isOpen()"
+	[attr.aria-label]="settingsPanel().isOpen() ? 'Close settings' : 'Open settings'"
+	[attr.aria-hidden]="isTouch ? null : 'true'" [attr.tabindex]="isTouch ? null : -1"
+	(click)="settingsPanel().toggle()">
+	<span class="settings-affordance__glyph" aria-hidden="true">{{ settingsPanel().isOpen() ? "<" : ">" }}</span>
+	<span class="settings-affordance__key" aria-hidden="true">c</span>
+	<span class="settings-affordance__label" aria-hidden="true">settings</span>
+</button>
+
+<!-- The top-right chrome, stacked: the navigation hint first, the definition buttons beneath. -->
+<div class="reader-affordances">
+	<!-- On a keyboard this is decorative — the `n` key does the work, so it is aria-hidden and not
+	     focusable. On a touch device it is the real control (see the `touch-input` styles). -->
+	<button id="navigation-affordance" class="navigation-affordance" type="button"
+		aria-label="Open navigation menu"
+		[attr.aria-hidden]="isTouch ? null : 'true'" [attr.tabindex]="isTouch ? null : -1"
+		[hidden]="navigationMenu().isOpen()" (click)="openNavigation()">
+		<span class="navigation-affordance__icon" aria-hidden="true">☰</span>
+		<span class="navigation-affordance__key" aria-hidden="true">n</span>
+		<span class="navigation-affordance__label">navigate</span>
+	</button>
+	<!-- The phone's `d` key, shown while text is selected in the reading column, on touch only;
+	     a keyboard presses `d` instead (D26). -->
+	<button id="definition-affordance" class="definition-affordance" type="button"
+		aria-label="Show the definition of the selected text"
+		[hidden]="!defineAffordanceShown()" (click)="defineTapped()">
+		<span class="definition-affordance__key" aria-hidden="true">d</span>
+		<span class="definition-affordance__label">definition</span>
+	</button>
+	<!-- The phone's `t`, shown only while more than one word is selected: a single word's
+	     translation lives inside its own definition box (D32). -->
+	<button id="translate-affordance" class="translate-affordance" type="button"
+		aria-label="Translate the selected text"
+		[hidden]="!translateAffordanceShown()" (click)="translateTapped()">
+		<span class="translate-affordance__key" aria-hidden="true">t</span>
+		<span class="translate-affordance__label">translate</span>
+	</button>
+</div>
+
+<!-- Every paragraph says where it is: the bookmark is read back off data-chapter and
+     data-paragraph. Paragraph 1 of a chapter is its title (D19). -->
+<article #column id="novel-paragraphs" aria-label="Novel paragraphs" (click)="onColumnClick($event)">
+	@for (block of blocks(); track block.key) {
+		@if (block.kind === "paragraph") {
+			<p [class.data-chapter-title]="isChapterTitle(block)"
+				[attr.data-chapter]="block.chapter" [attr.data-paragraph]="block.number"
+				[appServerMarkup]="block.markup"></p>
+		} @else {
+			<p class="reading-notice">{{ block.text }}</p>
+		}
+	}
+</article>
+
+<app-definition-box />
+
+<!-- The left-hand drawer (D35). A new kind of setting is a new section here; the drawer scrolls
+     once they outgrow the screen. The review comes first, and only for a reader with an AI. -->
+<app-settings-panel (opened)="onSettingsOpened()" (closed)="onSettingsClosed()">
+	<app-review-section (start)="startReview()" />
+	<app-appearance-section [keepReadingPosition]="keepReadingPosition" />
+	<app-assistant-section />
+	<app-password-section />
+</app-settings-panel>
+
+<!-- The vocabulary review, opened from the drawer's first section, over the text. -->
+<app-review-overlay (opened)="onReviewOpened()" (closed)="onReviewClosed()" />
+
+<!-- Shown only while the client is reconnecting, so a silent connection is never mistaken for a
+     slow one (D28). -->
+<div id="connection-status" class="connection-status" role="status" [hidden]="connectionState() !== 'reconnecting'">
+	@if (connectionState() === "reconnecting") { reconnecting… }
+</div>

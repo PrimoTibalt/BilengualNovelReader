@@ -1,0 +1,60 @@
+<main class="login-panel">
+	<header class="login-panel__header">
+		<span class="login-panel__title">novel reader</span>
+		<span class="login-panel__subtitle" id="mode-caption">{{ caption() }}</span>
+	</header>
+
+	<div class="login-tabs" role="tablist" aria-label="Sign in or sign up">
+		<button #signInTab type="button" class="login-tab" id="tab-signin" role="tab"
+			[attr.aria-selected]="mode() === 'signin'"
+			(click)="setMode('signin')" (keydown)="onTabKey($event)">sign in</button>
+		<button #signUpTab type="button" class="login-tab" id="tab-signup" role="tab"
+			[attr.aria-selected]="mode() === 'signup'"
+			(click)="setMode('signup')" (keydown)="onTabKey($event)">sign up</button>
+	</div>
+
+	<form class="login-panel__body" id="login-form" novalidate (submit)="submit($event)">
+		<div class="login-field">
+			<label class="login-field__label" for="username">username</label>
+			<span class="login-field__frame">
+				<input #userNameInput class="login-field__input" id="username" name="username" type="text"
+					autocomplete="username" autocapitalize="none" autocorrect="off"
+					spellcheck="false" placeholder="anton" required />
+			</span>
+		</div>
+
+		<div class="login-field">
+			<label class="login-field__label" for="password">password</label>
+			<span class="login-field__frame">
+				<!-- Password managers offer to save a new password only when told this is a new one. -->
+				<input #passwordInput class="login-field__input" id="password" name="password" type="password"
+					[attr.autocomplete]="mode() === 'signup' ? 'new-password' : 'current-password'"
+					placeholder="••••••••" required />
+			</span>
+		</div>
+
+		<!-- New readers come in by invitation (D42); the code is asked for on sign-up only. -->
+		@if (mode() === "signup") {
+			<div class="login-field" id="invite-field">
+				<label class="login-field__label" for="invite">invite code</label>
+				<span class="login-field__frame">
+					<input #inviteInput class="login-field__input" id="invite" name="invite" type="text"
+						autocomplete="off" autocapitalize="characters" autocorrect="off"
+						spellcheck="false" placeholder="XXXX-XXXX-XXXX" />
+				</span>
+			</div>
+		}
+
+		<div class="login-panel__actions">
+			<button class="login-submit" id="submit" type="submit" [disabled]="submitting()">{{ caption() }}</button>
+		</div>
+	</form>
+
+	<p class="login-message" id="message" role="status" aria-live="polite"
+		[class.login-message--error]="messageKind() === 'error'"
+		[class.login-message--working]="messageKind() === 'working'">{{ message() }}</p>
+
+	<footer class="login-panel__hints">
+		tab next field &middot; &larr;/&rarr; switch mode &middot; enter submit
+	</footer>
+</main>

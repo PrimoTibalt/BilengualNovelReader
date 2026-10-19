@@ -102,6 +102,13 @@ namespace NovelReader.Dictionary
 			return string.IsNullOrEmpty(translated) ? null : translated;
 		}
 
+		public Task<string?> AskAsync(
+			AssistantSettings settings,
+			string instructions,
+			string question,
+			CancellationToken cancellationToken = default) =>
+			CompleteAsync(settings, instructions, question, cancellationToken);
+
 		private static string Question(string selection, string? paragraph)
 		{
 			string context = (paragraph ?? string.Empty).Trim();

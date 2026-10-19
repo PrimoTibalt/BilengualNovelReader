@@ -1,0 +1,49 @@
+@if (screen(); as current) {
+	<div class="navigation-panel" role="dialog" aria-label="Navigation menu">
+		<header class="navigation-panel__header">
+			<span class="navigation-panel__title">
+				@for (crumb of trail(); track $index) {
+					<span class="navigation-panel__trail">{{ crumb }}</span>
+				}
+				<span>{{ current.title }}</span>
+			</span>
+			<!-- The counter and the touch-only back button share the right end of the header, so a
+			     wide breadcrumb pushes the group as a whole rather than splitting the two apart. -->
+			<span class="navigation-panel__header-right">
+				<span class="navigation-panel__counter">{{ counter() }}</span>
+				<!-- On touch there is no Escape: this does what Escape does. Hidden on a keyboard (CSS). -->
+				<button type="button" class="navigation-panel__close" aria-label="Back" (click)="back()">✕</button>
+			</span>
+		</header>
+
+		<div class="navigation-panel__filter-row">
+			<span class="navigation-panel__filter-prompt">/</span>
+			<input #filter type="search" id="navigation-input" class="navigation-panel__filter"
+				autocomplete="off" aria-label="Filter options"
+				[value]="filterText()" [placeholder]="current.filterPlaceholder ?? 'filter…'"
+				(input)="onFilterInput(filter.value)" (keydown)="onFilterKey($event, filter)" />
+		</div>
+
+		<div class="navigation-panel__body">
+			@if (matches().length === 0) {
+				<p class="navigation-panel__message">{{ emptyMessage() }}</p>
+			} @else {
+				<ul #list class="navigation-list" role="listbox">
+					@for (matched of matches(); track $index) {
+						<li class="navigation-list__option" role="option"
+							[class.navigation-list-option-selected]="$index === selected()"
+							[attr.aria-selected]="$index === selected()"
+							(click)="activateRow($index)">
+							<span class="navigation-list__label">{{ matched.before }}@if (matched.hit) {<span class="navigation-list__match">{{ matched.hit }}</span>}{{ matched.after }}</span>
+							@if (matched.item.detail) {
+								<span class="navigation-list__detail">{{ matched.item.detail }}</span>
+							}
+						</li>
+					}
+				</ul>
+			}
+		</div>
+
+		<footer class="navigation-panel__hints">{{ hints() }}</footer>
+	</div>
+}

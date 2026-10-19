@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using NovelReader.Domain.RealTimeReader.Assistant;
+using NovelReader.Domain.RealTimeReader.Review;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Translation;
 
@@ -92,6 +93,7 @@ namespace NovelReader.Dictionary
 
 			services.AddSingleton<IAssistant, OpenAiCompatibleAssistant>();
 			services.AddSingleton<AssistedDefinitionService>();
+			services.AddSingleton<ReviewTutor>();
 		}
 	}
 }

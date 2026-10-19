@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<!-- The controllers rewrite this to the path the app is mounted under (/reader behind nginx).
+	     Every asset, the hub and the auth endpoints resolve against it. -->
+	<base href="/" />
+	<title>Novel Reader</title>
+	<!--
+		The reader's appearance, applied before the first paint so a light page never flashes
+		dark first. src/app/settings/appearance.ts owns the format and writes the same key; this
+		only copies four values across, and anything it cannot read is left at the default.
+		Allowed by the CSP through its hash, which the server computes from this file (D42).
+	-->
+	<script>
+		try {
+			var stored = JSON.parse(localStorage.getItem("novelreader.appearance") || "{}");
+			var style = document.documentElement.style;
+			var hex = /^#[0-9a-f]{6}$/i;
+			if (typeof stored.fontScale === "number") style.setProperty("--reader-font-scale", String(stored.fontScale));
+			if (typeof stored.titleScale === "number") style.setProperty("--reader-title-scale", String(stored.titleScale));
+			if (hex.test(stored.background)) style.setProperty("--reader-background", stored.background);
+			if (hex.test(stored.text)) style.setProperty("--reader-text", stored.text);
+		} catch (error) { /* blocked storage: the defaults stand */ }
+	</script>
+</head>
+<body>
+	<app-root></app-root>
+</body>
+</html>

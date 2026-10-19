@@ -1,0 +1,171 @@
+﻿@font-face {
+	font-family: 'Libre Calson Regular';
+	src: url('../fonts/LibreCaslonText-Regular.ttf');
+}
+
+/*
+ * Keep the scrollbar's space reserved whether or not a scrollbar is there. Opening a panel
+ * locks scrolling (`html.scroll-locked { overflow: hidden }`), which takes the scrollbar away
+ * and widens the viewport by its width — and every `position: fixed` element anchored to the
+ * right, the two corner buttons among them, jumps that far right as the panel opens. Holding
+ * the gutter open costs nothing on a phone, where scrollbars are drawn over the page anyway.
+ */
+html {
+	scrollbar-gutter: stable;
+}
+
+/*
+ * The reader's own colours and size, set from the settings drawer as custom properties on
+ * <html> (D35). Unset, each falls back to the value here — which is how "reset" works: the
+ * property is removed, not set to a copy of the default.
+ */
+body.reading-page {
+	background-color: var(--reader-background, #1B1B1B);
+	color: var(--reader-text, #b2b2b2);
+	font-size: 1.8em;
+	margin: 0 13% 0 13%;
+	text-align: justify;
+	font-family: 'Libre Calson Regular';
+}
+
+/*
+ * No run of characters may be wider than the column. Chapters separate scenes with a line of
+ * dashes — chapter 211 of Reverend Insanity uses 109 of them, which renders 1461px wide — and
+ * Gecko answers content that will not fit by growing the *layout viewport* to hold it: measured
+ * at 1472px against a 378px screen. Everything anchored to that viewport then sits over a page
+ * the reader can pan sideways, which is how the corner buttons ended up off screen (D34).
+ *
+ * `anywhere` rather than `break-word`: only `anywhere` also shrinks the paragraph's min-content
+ * width, and it is the min-content width that blows the viewport out in the first place.
+ */
+#novel-paragraphs p {
+	overflow-wrap: anywhere;
+}
+
+/*
+ * The font-size slider scales the column alone. The body keeps its 1.8em, because every panel
+ * steps its own size down from the body's (`--tui-scale`) and must not grow with the prose.
+ */
+#novel-paragraphs {
+	font-size: calc(1em * var(--reader-font-scale, 1));
+}
+
+/*
+ * A paragraph that is nothing but separator characters is a scene break, not prose. Wrapped it
+ * would be three lines of dashes; drawn as a short rule it is what the author meant.
+ */
+.scene-break {
+	font-size: 0;          /* the dashes themselves are not worth reading */
+	text-align: center;
+	margin: 1.4em 0;
+}
+
+.scene-break::after {
+	content: "";
+	display: inline-block;
+	width: 96px;
+	max-width: 40%;
+	border-top: 1px solid #4a4a4a;
+	vertical-align: middle;
+}
+
+/*
+ * The title has its own slider (D38), independent of the column's: it sits inside
+ * #novel-paragraphs, whose size already carries `--reader-font-scale`, so that factor is
+ * divided back out and only the title's own applies.
+ */
+.data-chapter-title {
+	text-align: center;
+	font-weight: bolder;
+	font-size: calc(2em * var(--reader-title-scale, 1) / var(--reader-font-scale, 1));
+}
+
+/*
+ * Stepped down on a phone. 2em of the reading column's own 1.8em is around seven characters
+ * to a line on a phone-width screen, and paragraph 1 is only *assumed* to be the title — a
+ * novel that opens on prose instead gets a whole paragraph set at heading size. Both are
+ * much worse on a narrow column, so touch takes the smaller step; a desktop column has the
+ * width to carry the larger one and keeps it.
+ */
+html.touch-input .data-chapter-title {
+	font-size: calc(1.35em * var(--reader-title-scale, 1) / var(--reader-font-scale, 1));
+}
+
+@media (orientation: portrait) {
+	body.reading-page {
+		margin: 0 3% 0 3%;
+	}
+}
+/* Something the reader needs told — an unreachable chapter, a lost connection. */
+.reading-notice {
+	color: #8a8a8a;
+	font-style: italic;
+	text-align: center;
+}
+
+/*
+ * The top-right corner: the navigation hint, and under it the definition button a touch
+ * reader gets while text is selected (D26). Fixed once, here, so the two never have to agree
+ * on an offset — the second one simply sits below the first.
+ */
+.reader-affordances {
+	position: fixed;
+	top: 12px;
+	/*
+	 * Anchored to the right edge the reader can actually see, which is not always the one
+	 * `right: 12px` would use.
+	 *
+	 * Firefox draws its text-selection handles as content *inside the document* (Gecko's
+	 * AccessibleCaret), so selecting the last word on a line puts a handle past the end of
+	 * the text, the page gains real horizontal overflow, and Gecko grows the layout viewport
+	 * to match — measured at 23px on a phone. Every `position: fixed` box anchored by `right`
+	 * then slides that far towards the edge of the screen, which is the corner buttons moving
+	 * under the reader as they select a word. Chrome draws its handles as native UI outside
+	 * the document and never does this.
+	 *
+	 * `%` follows the grown viewport, `vw` does not, so their difference *is* the phantom
+	 * width, and adding it back cancels the slide. `max()` keeps a desktop scrollbar — where
+	 * `vw` is the wider of the two — from pushing the buttons the other way.
+	 */
+	right: max(12px, calc(100% - 100vw + 12px));
+	z-index: 80;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 8px;
+	/* Layout only: each button decides for itself whether it can be tapped. */
+	pointer-events: none;
+}
+
+/*
+ * The one sign that the link to the server is down. Bottom-left, out of the reading column's
+ * way, and only present while the client is reconnecting (D28).
+ */
+.connection-status {
+	position: fixed;
+	left: 12px;
+	bottom: 12px;
+	z-index: 80;
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	line-height: 1.5;
+	color: var(--tui-error);
+	background-color: var(--tui-bg);
+	border: 1px solid var(--tui-error);
+	padding: 0.3em 0.6em;
+	pointer-events: none;
+	user-select: none;
+}
+
+/* The Angular hosts of the chrome add no box of their own; each draws its own panel. */
+app-root,
+app-navigation-menu,
+app-definition-box,
+app-settings-panel,
+app-appearance-section,
+app-assistant-section,
+app-password-section,
+app-review-section,
+app-review-overlay {
+	display: contents;
+}

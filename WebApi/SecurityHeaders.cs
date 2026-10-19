@@ -45,7 +45,8 @@ namespace NovelReader
 				headers.XFrameOptions = "DENY";
 				headers.XContentTypeOptions = "nosniff";
 				headers["Referrer-Policy"] = "same-origin";
-				headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()";
+				// The microphone is the review's: an answer may be spoken rather than typed.
+				headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=(), payment=()";
 				headers["Cross-Origin-Opener-Policy"] = "same-origin";
 
 				return next();
@@ -54,14 +55,9 @@ namespace NovelReader
 
 		private static IEnumerable<string> InlineScriptHashes(string webRoot)
 		{
-			foreach (string page in new[] { "index.html", "login.html" })
+			string path = Path.Combine(webRoot, Controllers.ClientShell.FileName);
+			if (File.Exists(path))
 			{
-				string path = Path.Combine(webRoot, page);
-				if (!File.Exists(path))
-				{
-					continue;
-				}
-
 				foreach (Match script in InlineScript.Matches(File.ReadAllText(path)))
 				{
 					byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(script.Groups[1].Value));

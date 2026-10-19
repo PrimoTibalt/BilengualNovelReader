@@ -96,7 +96,7 @@ minimal-dependency preference. Flagged as an open question rather than silently 
 
 ---
 
-## D5 — No JavaScript/TypeScript runtime libraries
+## D5 — No JavaScript/TypeScript runtime libraries *(superseded by D43)*
 
 **Status:** Adopted · 2026-08-31
 
@@ -649,7 +649,7 @@ same proven define path. The one thing not exercised end to end on a real device
 
 ---
 
-## D25 — Cache-busting is a versioned path prefix, because the client is an ES-module graph
+## D25 — Cache-busting is a versioned path prefix, because the client is an ES-module graph *(superseded by D43)*
 
 **Status:** Adopted · 2026-09-04
 
@@ -1588,3 +1588,109 @@ the cookie off requests from other sites, but not from other pages on the same s
 - Rate-limit counters, like the D41 locks, are in memory and reset on restart.
 - Not done: moving the reader to its own subdomain (it still shares an origin with `/cv`),
   revoking sessions, and encrypting the key ring at rest.
+
+---
+
+## D43 — The client is Angular
+
+**Status:** Adopted · 2026-10-19 · supersedes D5 and D25
+
+**Context.** The hand-written client had grown to about 5,000 lines of TypeScript building its
+DOM with `createElement`, and a vocabulary review was about to add the largest panel yet. The
+reader asked for the client to be moved to the latest Angular first, and for the move to change
+nothing a reader can see — on desktop or phone — before the review was built on it.
+
+**Decision.** Angular 22 in `WebApi/client`: standalone components, signals, zoneless change
+detection, `OnPush`. `ng build` writes content-hashed files into `wwwroot`, which is now build
+output only and gitignored. The SignalR client is an npm import, so libman is gone.
+
+- **One shell, two routes.** Both controllers serve the one `index.html` through `ClientShell`,
+  with `<base href>` set to the path base; the router lazy-loads the login or the reading page.
+  The login page does not download the reader.
+- **Cache-busting by file name** replaces D25's versioned prefix: Angular hashes every script,
+  stylesheet and font, so `ClientAssets` serves hashed names as `immutable` and the rest
+  `no-cache`. `AssetVersion` and `VersionedPage` are gone.
+- **No component styles.** Angular injects a component's styles as `<style>` tags, which the
+  CSP (D42) blocks. The existing stylesheets became global styles, in the same order, so the
+  look carried over unchanged. `inlineCritical` is off for the same reason. The login and
+  reading `body` rules are scoped by a class each page sets on `<body>`.
+- **The column is Angular, its paragraphs are not re-rendered.** An `@for` renders paragraphs;
+  `ServerMarkup` writes each one's server markup once (D3, bypassing the sanitiser, which would
+  strip `data-term`), and the underliner keeps patching it in place (D14). Code that changes the
+  column and then measures runs `detectChanges()` first. The measuring helpers
+  (`ProgressReporter`, `ReadingAnchor`, `SmoothScroller`, selection, underliner) were kept as
+  they were: they are DOM code, and rewriting them would only have risked D23/D36/D37.
+- **Same keys, same router.** `KeyboardRouter` is an injectable with the D6 semantics; panels
+  still expose `move`/`activate`/`back` and the page binds them.
+
+**Verified.** A Playwright script drove the old client and then the new one against the same
+server, in desktop Chromium (1280×800) and an emulated touch phone (412×915, `hover: none`,
+`pointer: coarse`): sign-in; bookmark restore; navigation menu and its chapter screen, the
+`300` filter row and the library; the settings drawer, its keyboard grid and `h/l` on the font
+slider keeping the bottom paragraph (6:2 → 6:2), reset clearing storage; the definition box —
+senses, save underlining, the translation form opening focused on email, cancel, delete
+removing the underline; touch `d`/`t` affordances, `t` only for a phrase; j-scrolling; rolling
+into the next chapter. Every check matched and neither page logged an error or a CSP
+violation. Screenshots were compared side by side; the one difference, the phone column's
+margins, came from the portrait `body` rule losing to the new scoped one, and was fixed.
+
+**Consequences.**
+- A component that needs CSS adds it to a global stylesheet under `client/src/styles/`.
+- A page left open across a deploy can fail to load a lazy chunk the deploy deleted, as a
+  stale module graph could before D25; a reload fixes it.
+- The build needs Node and an `npm ci` of about 500 packages; `-p:SkipClientBuild=true` still
+  reuses what is in `wwwroot`.
+- `AddMongoClient` no longer insists on an X.509 client certificate; without one configured it
+  uses the connection string's credentials, so a local Mongo works again.
+
+---
+
+## D44 — A vocabulary review: Anki's schedule, the reader's AI as examiner
+
+**Status:** Adopted · 2026-10-19
+
+**Context.** Saved words were only underlined when met again; a word not seen for months was
+forgotten. The reader wanted tests, scheduled the way Anki schedules cards. They wanted the
+reader's own AI to help, since definitions are too long to type back. Answers should be in the
+reader's own words, possibly spoken. Words should start with matching to definitions and move on
+to sentences, and to translation from the reader's own language when one is set.
+
+**Decision.**
+- **Where:** the first section of the settings drawer, shown only while an AI is configured,
+  with the due and new counts and `start review`. The review opens over the page as a TUI
+  panel, like the others.
+- **The server decides** which words, in which form, and whether an answer was right. A match
+  is checked one pair at a time, so its key never reaches the page.
+- **Schedule:** Anki's SM-2 variant with Anki's default deck options (`ReviewScheduler`); the
+  20-new-words-a-day limit counts in UTC days. No fuzz, so the schedule can be tested exactly.
+- **Form follows maturity** (`ReviewPlanner.KindFor`): match while new or learning or under 3
+  days; explain in your own words until 10 days; then a sentence of your own, alternating with
+  translating a sentence from your language into English when a language is set (D31).
+- **Grading:** a match pair right at the first try is Good, otherwise Again. A free answer is
+  judged by the AI as correct, partial or wrong, which gives Good, Hard or Again. "Don't know"
+  is Again. The AI never awards Easy; that would be the AI guessing at confidence.
+- **Glosses** for matching are written by the AI in one batched call, at most 12 words each,
+  and stored on the card, so each word costs one call ever. When the AI cannot give one, the
+  dictionary's first sense stands in, cut to 140 characters.
+- **Voice:** the browser's speech recognition, in English, behind a mic button and `v`. Firefox
+  has none, so there the button is not shown; a phone keyboard's own dictation works in the
+  field anyway. The Permissions-Policy now allows the microphone for this origin.
+- **Storage:** `Users.ReviewCards`, one document per (user, term), unique. Cards are created
+  lazily for saved words and dropped when the word is deleted. The open exercise is kept in
+  memory and lost on restart, which costs nothing because ungraded means unchanged.
+
+**Verified.** 15 unit tests cover the scheduler's arithmetic, the planner's order and forms,
+reading the AI's JSON, and a session end to end against fakes. All 287 tests pass. In the
+browser, with the OpenAI endpoint answered by a local fake (an HTTPS proxy, its CA trusted only
+by the test process) and Mongo a throwaway local instance, the flow was driven on desktop and
+phone. The section is hidden without an AI and appears once one is saved. Three saved words
+count as `3 new`. The match is played by keys and by taps, a wrong pair is marked and graded
+Again (back in 1 min), and the right ones Good (10 min). A recall judged correct moves to 13
+days. Sentence, give-up, and translation from Russian once a language was set from the
+definition box all work. On a phone the words wrap across the top. The answer field is not
+focused on arrival, so the keyboard does not cover the question.
+
+**Not done.** No real model has judged an answer yet. The prompts are written for glm-5.3 and
+gpt-class models but were exercised only against the fake. There is no reader override for a
+verdict the reader disagrees with.
+

@@ -6,6 +6,9 @@
 # dotenv files
 .env
 publish.sh
+deploy
+kestrel-bilengual.service
+primotibalt.top
 
 # User-specific files
 *.rsuser
@@ -487,8 +490,8 @@ $RECYCLE.BIN/
 *.swp
 
 # TypeScript client build output — sources live in WebApi/src, emitted by tsc
-WebApi/wwwroot/**/*.js
-WebApi/wwwroot/**/*.js.map
+# The Angular client's build output (WebApi/client -> WebApi/wwwroot).
+WebApi/wwwroot/
 
 # Local SQLite account store (created on first run).
 *.db

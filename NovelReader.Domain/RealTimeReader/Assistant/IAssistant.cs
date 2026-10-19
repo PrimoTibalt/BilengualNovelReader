@@ -21,5 +21,16 @@ namespace NovelReader.Domain.RealTimeReader.Assistant
 			string? paragraph,
 			string targetLanguageName,
 			CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// One instruction and one question, answered as plain text — for callers that write their
+		/// own prompt and read the answer themselves, as the review does. Null when the AI gave no
+		/// usable answer.
+		/// </summary>
+		Task<string?> AskAsync(
+			AssistantSettings settings,
+			string instructions,
+			string question,
+			CancellationToken cancellationToken = default);
 	}
 }

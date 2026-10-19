@@ -1,0 +1,41 @@
+<section class="settings-section">
+	<h2 class="settings-section__title">appearance</h2>
+
+	<!-- Two sliders, each independent of the other (D38): the text, and the chapter titles. -->
+	@for (row of scaleRows; track row.key) {
+		<label class="settings-row">
+			<span class="settings-row__label">{{ row.caption }}</span>
+			<span class="settings-row__controls">
+				<input #scale type="range" class="settings-slider" [attr.aria-label]="row.caption"
+					[min]="minimumFontScale" [max]="maximumFontScale" [step]="fontScaleStep"
+					[value]="preferences()[row.key] ?? 1"
+					(input)="onScale(row.key, scale.value)" />
+				<span class="settings-slider__value">{{ percent(row.key) }}</span>
+			</span>
+		</label>
+	}
+
+	<!-- A hex field with a swatch beside it. The swatch is the browser's colour picker; the field
+	     is what a reader who knows the colour they want types into. Each follows the other. -->
+	@for (row of colourRows; track row.key) {
+		<label class="settings-row">
+			<span class="settings-row__label">{{ row.caption }}</span>
+			<span class="settings-row__controls">
+				<input #swatch type="color" class="settings-swatch" [attr.aria-label]="row.caption + ' picker'"
+					[value]="swatchValue(row.key)" (input)="onSwatch(row.key, swatch.value)" />
+				<input #hex type="text" class="settings-field settings-field--hex" maxlength="7"
+					spellcheck="false" autocomplete="off" autocapitalize="off"
+					[attr.aria-label]="row.caption + ', hex'" [placeholder]="fallbacks[row.key]"
+					[class.settings-field--invalid]="isInvalid(row.key)"
+					[value]="typed()[row.key]"
+					(input)="onHex(row.key, hex.value)" (blur)="onHexBlur(row.key)" />
+			</span>
+		</label>
+	}
+
+	<p class="settings-note" role="status">{{ note() }}</p>
+
+	<div class="settings-actions">
+		<button type="button" class="settings-button" (click)="reset()">reset to defaults</button>
+	</div>
+</section>

@@ -1,0 +1,327 @@
+/*
+ * The vocabulary review: the same TUI panel as the navigation menu and the definition box,
+ * centred over the page with the page dimmed behind it. Palette comes from tui.css.
+ */
+
+.review-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 97;
+	background-color: rgba(0, 0, 0, 0.45);
+}
+
+.review-panel {
+	position: fixed;
+	z-index: 98;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: min(72ch, calc(100vw - 24px));
+	max-height: calc(100dvh - 24px);
+	display: flex;
+	flex-direction: column;
+	background-color: var(--tui-bg);
+	border: 2px solid var(--tui-border);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	line-height: 1.5;
+	color: var(--tui-text);
+	text-align: left;
+}
+
+.review-panel__header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 1em;
+	padding: 0.5em 0.75em;
+	border-bottom: 1px solid var(--tui-rule);
+}
+
+.review-panel__title {
+	font-weight: 700;
+	color: var(--tui-accent);
+}
+
+.review-panel__trail {
+	color: var(--tui-dim);
+	font-weight: 400;
+}
+
+.review-panel__header-right {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+}
+
+.review-panel__counter {
+	color: var(--tui-dim);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.review-panel__close {
+	display: none;
+	appearance: none;
+	background: none;
+	border: none;
+	color: var(--tui-text);
+	font-family: inherit;
+	font-size: 1.3em;
+	line-height: 1;
+	padding: 0 0.2em;
+	cursor: pointer;
+}
+
+html.touch-input .review-panel__close {
+	display: inline-block;
+}
+
+.review-panel__body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 0.75em;
+}
+
+.review-panel__waiting,
+.review-panel__message {
+	margin: 0.4em 0;
+	color: var(--tui-dim);
+}
+
+/* Red is reserved for what is actually wrong (D33). */
+.review-panel__error {
+	margin: 0.4em 0;
+	color: var(--tui-error);
+}
+
+/* ---- A match: the words down the left, the meanings down the right ---- */
+
+.review-match {
+	display: grid;
+	grid-template-columns: minmax(8ch, auto) 1fr;
+	gap: 0.75em;
+	align-items: start;
+}
+
+.review-match__column {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.3em;
+}
+
+.review-match__item {
+	position: relative;
+	padding: 0.35em 0.6em 0.35em 1.4em;
+	border: 1px solid var(--tui-rule);
+	cursor: pointer;
+	overflow-wrap: anywhere;
+}
+
+.review-match__item--word {
+	font-weight: 700;
+}
+
+html:not(.touch-input) .review-match__item--cursor {
+	background-color: var(--tui-selection);
+}
+
+html:not(.touch-input) .review-match__item--cursor::before {
+	content: ">";
+	position: absolute;
+	left: 0.45em;
+	color: var(--tui-accent);
+}
+
+.review-match__item--picked {
+	border-color: var(--tui-accent);
+	color: var(--tui-accent);
+}
+
+.review-match__item--matched {
+	color: var(--tui-dim);
+	border-style: dashed;
+	cursor: default;
+}
+
+.review-match__item--matched::after {
+	content: " ✓";
+}
+
+.review-match__item--wrong {
+	border-color: var(--tui-error);
+	color: var(--tui-error);
+}
+
+/* On a phone the two columns are too narrow for a meaning: the words go across the top. */
+@media (max-width: 40rem) {
+	.review-match {
+		grid-template-columns: 1fr;
+	}
+
+	.review-match__column--words {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.review-match__item {
+		padding: 0.5em 0.7em;
+	}
+
+	.review-match__item--cursor::before {
+		content: none;
+	}
+}
+
+/* ---- A free answer ---- */
+
+.review-prompt {
+	margin: 0.2em 0 0.6em;
+	font-size: 1.6em;
+	font-weight: 700;
+	color: var(--tui-accent);
+	overflow-wrap: anywhere;
+}
+
+/* A sentence to translate is read, not glanced at. */
+.review-prompt--sentence {
+	font-size: 1.15em;
+	font-weight: 400;
+	color: var(--tui-text);
+}
+
+.review-answer {
+	display: flex;
+	gap: 0.5em;
+	align-items: stretch;
+}
+
+.review-answer__field {
+	flex: 1 1 auto;
+	min-width: 0;
+	resize: vertical;
+	background-color: transparent;
+	border: 1px solid var(--tui-rule);
+	color: var(--tui-text);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: 1.5;
+	padding: 0.4em 0.6em;
+}
+
+.review-answer__field:focus {
+	outline: none;
+	border-color: var(--tui-accent);
+}
+
+.review-answer__mic {
+	flex: 0 0 auto;
+	width: 2.8em;
+	appearance: none;
+	background: transparent;
+	border: 1px solid var(--tui-rule);
+	color: var(--tui-text);
+	cursor: pointer;
+	padding: 0.4em;
+}
+
+.review-answer__mic svg {
+	width: 100%;
+	height: 1.6em;
+}
+
+.review-answer__mic--on {
+	border-color: var(--tui-accent);
+	color: var(--tui-accent);
+}
+
+/* ---- The result ---- */
+
+.review-result__verdict {
+	margin: 0.2em 0 0.4em;
+	font-weight: 700;
+}
+
+.review-result__verdict--correct,
+.review-result__verdict--matched {
+	color: var(--tui-accent);
+}
+
+.review-result__verdict--partial,
+.review-result__verdict--shown {
+	color: var(--tui-text);
+}
+
+.review-result__verdict--wrong {
+	color: var(--tui-error);
+}
+
+.review-result__feedback,
+.review-result__reference {
+	margin: 0.4em 0;
+}
+
+.review-result__label {
+	display: block;
+	color: var(--tui-dim);
+}
+
+.review-result__solution,
+.review-result__graded {
+	list-style: none;
+	margin: 0.6em 0 0;
+	padding: 0;
+}
+
+.review-result__graded {
+	color: var(--tui-dim);
+}
+
+.review-result__word {
+	color: var(--tui-text);
+	font-weight: 700;
+}
+
+/* ---- Hints and the tap toolbar, as in the other panels ---- */
+
+.review-panel__hints {
+	padding: 0.45em 0.75em;
+	border-top: 1px solid var(--tui-rule);
+	color: var(--tui-dim);
+	font-size: 0.9em;
+}
+
+.review-panel__buttons {
+	display: none;
+	flex-wrap: wrap;
+	gap: 0.4em;
+	padding: 0.5em 0.75em;
+	border-top: 1px solid var(--tui-rule);
+}
+
+html.touch-input .review-panel__buttons {
+	display: flex;
+}
+
+html.touch-input .review-panel__hints {
+	display: none;
+}
+
+.review-panel__button {
+	flex: 1 1 auto;
+	appearance: none;
+	background-color: var(--tui-bg);
+	border: 1px solid var(--tui-border);
+	color: var(--tui-text);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: 1.2;
+	padding: 0.5em 0.7em;
+	min-height: 2.4em;
+	cursor: pointer;
+}

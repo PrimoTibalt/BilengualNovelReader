@@ -1,0 +1,41 @@
+<section class="settings-section">
+	<h2 class="settings-section__title">ai definitions &amp; translations</h2>
+
+	<p class="settings-status" [class.settings-status--on]="configured()">{{ status() }}</p>
+
+	<label class="settings-row">
+		<span class="settings-row__label">service</span>
+		<span class="settings-row__controls">
+			<select #service class="settings-field" aria-label="AI service" (change)="this.service.set(service.value)">
+				@for (offered of settings().services; track offered.id) {
+					<option [value]="offered.id" [selected]="offered.id === this.service()">{{ offered.name }}</option>
+				}
+			</select>
+		</span>
+	</label>
+
+	<label class="settings-row">
+		<span class="settings-row__label">model</span>
+		<span class="settings-row__controls">
+			<input #model type="text" class="settings-field" spellcheck="false" autocomplete="off"
+				autocapitalize="off" aria-label="Model" [placeholder]="modelPlaceholder()" />
+		</span>
+	</label>
+
+	<label class="settings-row">
+		<span class="settings-row__label">api key</span>
+		<span class="settings-row__controls">
+			<!-- Not a site password: autocomplete off stops the browser offering to save it as one. -->
+			<input #key type="password" class="settings-field" spellcheck="false" autocomplete="off"
+				autocapitalize="off" aria-label="API key"
+				[placeholder]="configured() ? 'empty keeps saved key' : 'paste your key'" />
+		</span>
+	</label>
+
+	<p class="settings-note" role="status">{{ note() }}</p>
+
+	<div class="settings-actions">
+		<button type="button" class="settings-button" [disabled]="busy()" (click)="submit()">save</button>
+		<button type="button" class="settings-button" [disabled]="busy() || !configured()" (click)="forget()">remove</button>
+	</div>
+</section>

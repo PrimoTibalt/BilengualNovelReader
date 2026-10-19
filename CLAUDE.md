@@ -14,21 +14,25 @@ dotnet run --project WebApi           # run the web app (http profile -> http://
 dotnet run --project WebApi --launch-profile https   # https://localhost:7178
 ```
 
-`run.sh` is the one-command path: it handles the three prerequisites below (podman
-Mongo, libman restore, and the build) and then runs the app in the foreground. The
+`run.sh` is the one-command path: it handles the prerequisites below (podman Mongo and the
+build) and then runs the app in the foreground. The
 Mongo container is left running after Ctrl-C so cached chapters survive a restart.
 
-The TypeScript client is compiled by `dotnet build` (see the `CompileClientTypeScript` target in `WebApi/NovelReader.csproj`), so it needs no separate step. To iterate on the frontend alone, from `WebApi/`:
+The Angular client (`WebApi/client`) is built by `dotnet build` (the `BuildClient` target in `WebApi/NovelReader.csproj` runs `npm ci` and `ng build` into `WebApi/wwwroot`), so it needs no separate step. To iterate on the frontend alone, from `WebApi/client/`:
 
 ```bash
-npm run watch      # recompile on save
-npm run typecheck  # type-check without emitting
-dotnet build -p:SkipClientBuild=true   # skip tsc, reuse the JS already in wwwroot
+npx ng build                                  # build into ../wwwroot (type-checks the templates too)
+npx ng build --watch --configuration development
+dotnet build -p:SkipClientBuild=true          # from WebApi/: reuse what is already in wwwroot
 ```
+
+`wwwroot/` is entirely build output — every client build wipes and rewrites it — and is gitignored.
+Static files are re-read per request, so a client rebuild shows on reload; only an edit to
+the inline script in `index.html` needs a restart (its CSP hash is computed at start-up).
 
 Tests: `dotnet test NovelReader.Tests` (xunit). No lint/format config.
 
-### Three prerequisites the build does not cover
+### Prerequisites the build does not cover
 
 - **ASP.NET Core runtime + targeting pack.** The projects target `net10.0` and `WebApi` uses `Microsoft.NET.Sdk.Web`, which needs the ASP.NET Core shared framework — it is *not* part of the base .NET SDK on Arch. Without the targeting pack the build fails with `NETSDK1226: Prune Package data not found ... Microsoft.AspNetCore.App`; without the runtime the app fails at launch with `No frameworks were found`. Install both:
   ```bash
@@ -36,19 +40,14 @@ Tests: `dotnet test NovelReader.Tests` (xunit). No lint/format config.
   ```
   `-p:AllowMissingPrunePackageData=true` will get a build through without the targeting pack, but the app still will not run — don't bake that flag into the project files.
 
-- **SignalR client JS is not in the repo.** `wwwroot/lib/` is gitignored, so `signalr.min.js` must be restored after a fresh clone or the page loads with `signalR` undefined. The CLI installs to `~/.dotnet/tools`, which is not on `PATH` by default:
-  ```bash
-  dotnet tool install -g Microsoft.Web.LibraryManager.Cli
-  cd WebApi && ~/.dotnet/tools/libman restore
-  ```
-  Destinations in `libman.json` are relative to the **project root**, not `wwwroot` — so the destination must read `wwwroot/lib/microsoft-signalr/`. A bare `lib/…` restores to `WebApi/lib/` where the served page cannot see it.
-
 - **MongoDB must be reachable** at the `DefaultConnectionString` in `WebApi/appsettings.json` (`mongodb://admin:password@127.0.0.1:27017`). It is not in the Arch repos; a rootless container matching those credentials:
   ```bash
   podman run -d --name novelreader-mongo -p 27017:27017 \
     -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=password \
     -v novelreader-mongo-data:/data/db docker.io/library/mongo:8
   ```
+  A client certificate is used only when `MongoOptions:X509Certificate` (and `…Pass`) is
+  configured — Atlas; without one the connection string's credentials are used.
   `AddMongoClient` pings on startup but only logs failures to the console, so a missing Mongo does not stop the app booting — it surfaces later as a timeout inside the hub. A healthy start prints `Pinged your deployment.`
 
 ## Architecture
@@ -96,10 +95,14 @@ vocabulary.
 from loopback only — nginx), `UseSecurityHeaders`, `UseSameOriginRequests`, and after
 authorization `UseRateLimiter`. Things that break if forgotten:
 
-- **The CSP allows scripts from this origin only.** An inline `<script>` in `index.html` or
-  `login.html` is allowed by a hash computed from the file at start-up, so editing one needs
-  a restart, nothing more. An inline `style="…"` attribute or a script from a CDN will be
-  blocked. Set styles through `element.style` or a stylesheet.
+- **The CSP allows scripts and styles from this origin only.** The inline `<script>` in the
+  built `index.html` is allowed by a hash computed from the file at start-up, so editing it
+  needs a restart, nothing more. An inline `style="…"` attribute, a component `styles:` block
+  (Angular injects those as `<style>` tags) or a script from a CDN will be blocked: styles go
+  in the global stylesheets under `client/src/styles/`, and dynamic values through
+  `element.style`/`[style.x]` bindings (CSSOM, which the CSP allows). The build's
+  `inlineCritical` is off for the same reason.
+- **The Permissions-Policy allows the microphone for this origin** — the review's dictation.
 - **A request from another origin is refused with 403**: the hub, and any POST/PUT/DELETE.
   A new page that posts from somewhere other than this origin will not work.
 - **Novel names are checked against `NovelSlug`** in the hub. A new hub method that takes a
@@ -156,60 +159,108 @@ Chapter URLs are built as `book/{novelName}/chapter-{chapterNumber}` against the
 
 ### Frontend
 
-TypeScript, no framework and no bundler. Sources live in `WebApi/src/`; `tsc` emits browser-native ES2022 modules straight into `wwwroot/`, mirroring the directory layout, and `UseStaticFiles` serves them. `ReadingPageController` serves `index.html` at `/ReadingPage` (signed-in readers only); `LoginController` serves `login.html` at `/Login`; the hub is mapped at `/signalr`.
+Angular (D43): standalone components, signals, zoneless change detection, `OnPush`
+everywhere, no NgModules. Sources in `WebApi/client/src/`; `ng build` emits content-hashed
+files into `WebApi/wwwroot/`. **One HTML shell for both pages**: `LoginController` (`/Login`)
+and `ReadingPageController` (`/ReadingPage`, signed-in readers only) both serve `index.html`
+through `ClientShell`, which rewrites `<base href="/">` to the path base (`/reader` behind
+nginx); the router then lazy-loads that page's component. Hashed files are cached for a year,
+the shell is `no-cache` (`ClientAssets`) — this replaced D25's `/_v/{token}` prefix. Every URL
+the page calls is built with `appUrl()` (`core/app-base.ts`) against that base; the hub is
+mapped at `/signalr`. The SignalR client is now an npm import, bundled.
 
-- `src/realTimeReader.ts` — entry point: wires the connection, the keyboard modes, the definition box and the navigation menu's screens. Paragraph **1** of a chapter is its title (`.data-chapter-title`) — paragraphs now arrive with their real numbers (D19). Every rendered `<p>` carries `data-chapter` and `data-paragraph`, which is how the bookmark is read back off the page.
-- `src/login.ts` — the login screen. Posts JSON and acts on the answer in place, so a rejected password does not cost a reload.
-- `src/input/keyboardRouter.ts` — a stack of named key modes, innermost first (D6). Opening the definition box or the menu pushes a mode; closing pops it. Text fields are left alone, so a focused filter input keeps its own keys.
-- `src/reading/` — `connection.ts` (the hub calls and their wire shapes), `progressReporter.ts` (the debounced bookmark), `readingAnchor.ts` (records the top-of-screen paragraph while the column width is unchanged and restores it when the width changes, e.g. a rotation, even one made while the page was hidden (D36)), `scroller.ts` (j/k smooth scroll and the scroll lock), `selection.ts`, `underliner.ts`.
-- `src/ui/definitionBox.ts` — the definition panel: opened by the *request* showing `loading…`, filled in by the answer, after five seconds of silence, `still looking…` in dim when the connection is up and `connection lost` in red only when it is genuinely down (D33); senses paged with j/k, save/delete, and the translation block filled in by `t`. It is also
-  the translation **settings form** (`e`, or `t` before anything is configured): email then a
-  filtered language list, using the navigation menu's keys — type to narrow, Enter forward,
-  Escape back (D31). The form is the one thing exempt from the fixed body height. Its size is fixed in CSS — three lines tall and `min(46ch, calc(100% - 24px))` wide — and must not be measured from the content or it shrinks against the right edge of the screen (D27).
-- `src/ui/settingsPanel.ts` — the left settings drawer: `c`, or on touch the `>`/`<` button
-  top-left (on a keyboard that corner is a decorative `c settings` hint, like `n navigate`).
-  No animation. A scrolling stack of `SettingsSection`s; a new option is a new section in the
-  list in `realTimeReader.ts` (D35). From the keyboard it is a grid (D36): j/k between rows
-  (`.settings-row`, `.settings-actions`), h/l along a row (or the slider's value), Enter
-  edits/presses, Escape leaves a field and then closes the drawer. New sections get this free
-  as long as they build rows with `settingsRow`/`settingsActions`. `appearanceSection.ts` (font size, chapter-title size (independent, D38), colours — per device, in
-  `localStorage`, applied pre-paint by an inline script in `index.html`),
-  `assistantSection.ts` (the reader's AI: service, model, key) and `passwordSection.ts` (D40).
-- `src/interactive-select/module.ts` — `NavigationMenu`, the TUI panel opened with `n`. It is a **stack of `MenuScreen`s**, not one list: activating a row can `push` another screen, Escape pops (clearing an active filter first) and closes at the root. It renders the panel itself and handles no keys — the caller binds `move`/`activate`/`back` through the router — except inside the filter field, which owns its keystrokes while focused.
+- `app/core/` — `ReaderConnection` (the hub calls and their wire shapes in `hub-models.ts`;
+  pushed answers arrive as RxJS `Subject`s, the connection state as a signal), `ReaderState`
+  (the reader's AI and translation settings as signals, shared by the box, the drawer and the
+  review), `KeyboardRouter` (a stack of named key modes, innermost first, D6), `pointer.ts`.
+- `app/login/login-page.ts` — the login screen. Posts JSON and acts on the answer in place.
+- `app/reading/reading-page.ts` — the orchestrator (what `realTimeReader.ts` was): key modes,
+  chapter loading and trimming, the touch affordances, the navigation screens. Paragraph **1**
+  of a chapter is its title (`.data-chapter-title`) (D19). The column is an `@for` over
+  `blocks`; every `<p>` carries `data-chapter` and `data-paragraph`, which is how the bookmark
+  is read back off the page. Its markup is written **once** by the `ServerMarkup` directive
+  (D3 — the server escapes it; Angular's sanitiser would strip `data-term`) and afterwards only
+  patched in place by `underliner.ts` (D14), so a paragraph must never be re-rendered. Anything
+  that changes `blocks` and then measures calls `#renderBlocks`, which runs `detectChanges()`
+  so the DOM is there to measure. The framework-free helpers beside it — `progress-reporter`
+  (the debounced bookmark), `reading-anchor` (D36), `scroller` (j/k and the scroll lock),
+  `selection`, `underliner` — work on the DOM directly.
+- `app/definition/definition-box.ts` — the definition panel: opened by the *request* showing
+  `loading…`, filled in by the answer, after five seconds `still looking…` in dim when the
+  connection is up and `connection lost` in red only when it is down (D33); senses paged with
+  j/k, save/delete, the translation block. Also the translation **settings form** (`e`, or `t`
+  before anything is configured) — email, then a filtered language list (D31). Its size is
+  fixed in CSS and must not be measured from the content (D27); it is positioned after each
+  render by an `afterRenderEffect`.
+- `app/settings/settings-panel.ts` — the left drawer: `c`, or on touch the `>`/`<` button
+  top-left. Sections are **projected** into it from `reading-page.html`, in order; a new
+  option is a new section component there (D35). From the keyboard it is a grid (D36): j/k
+  between `.settings-row`/`.settings-actions`, h/l along a row, Enter edits/presses, Escape
+  leaves a field and then closes the drawer — worked out from those classes alone, so a new
+  section gets the keys for free. A section that shows stored state reads the panel's
+  `openings()` signal (inject `SettingsPanel`) to refresh when the drawer opens. Sections:
+  `review-section` (first, AI readers only), `appearance-section` (per device, in
+  `localStorage`, applied pre-paint by the inline script in `index.html`; chapter-title size
+  independent, D38), `assistant-section`, `password-section` (D40).
+- `app/navigation/navigation-menu.ts` — `NavigationMenu`, the `n` panel: a **stack of
+  `MenuScreen`s**; activating a row can `push` another, Escape pops (clearing a filter first)
+  and closes at the root. It handles no keys itself — the page binds `move`/`activate`/`back`
+  through the router — except inside the filter field.
+- `app/review/` — the vocabulary review (D44): `review-overlay` (the panel over the text),
+  `review-section`, `speech-input` (Web Speech dictation).
+
+Components declare **no `styles`** (CSP, above). The stylesheets are global, listed in order in
+`angular.json`: `tui.css` defines the `--tui-*` tokens and the panels' scrollbars (D30) and must
+come first; then `reader.css`, `navigation.css`, `definition-box.css`, `settings-panel.css`,
+`review.css`, `login.css`. The reader's and the login screen's `body` rules are scoped by the
+`reading-page` / `login-page` class each page puts on `<body>`. Component hosts are
+`display: contents` (end of `reader.css`), so a host element never adds a box.
 
 The top-right corner is a stack (`.reader-affordances`): the `n navigate` hint, the
-`d definition` button a touch reader gets while text is selected — the phone's `d` key (D26) —
-and under that `t translate`, which appears only for a selection of **more than one word**
-(D32). `t` does the same from a keyboard, in reading mode. Both ask for the definition and the
-translation at once and render whichever lands first, which is why `AddSignalR` raises
-`MaximumParallelInvocationsPerClient` (the default of 1 queued the translation behind the
-definition) and why a translation is matched to its box by surface form rather than term. A settled selection no longer opens anything by itself. The bottom-left `reconnecting…`
-chip is the only sign of a dropped connection; the client reconnects once a second on its own,
-hub calls wait for it rather than failing, and a chapter load that a drop cut short is retried
-when it returns — which is why `ChapterView` carries `failed` as well as `found` (D28).
+`d definition` button a touch reader gets while text is selected (D26), and under that
+`t translate`, only for a selection of **more than one word** (D32). Both ask for the
+definition and the translation at once, which is why `AddSignalR` raises
+`MaximumParallelInvocationsPerClient` and why a translation is matched to its box by surface
+form. The bottom-left `reconnecting…` chip is the only sign of a dropped connection; the client
+reconnects once a second on its own, hub calls wait for it, and a chapter load that a drop cut
+short is retried when it returns — which is why `ChapterView` carries `failed` (D28).
 
-All three panels share one palette: `wwwroot/tui.css` defines the `--tui-*` tokens and must be linked before `interactive-select/styles.css`, `definition-box.css`, `settings-panel.css` and `login.css`, which draw from it. Restyling the chrome means editing the tokens, not the panels. It also draws the panels' **scrollbars**, which are the one piece of shared chrome the panels do not style themselves: the two engines have to be told the same width in different languages, and the split is delicate enough that it lives in one place (D30).
-
-Three things to keep in mind when editing:
+Things to keep in mind when editing:
 
 - **Anything that measures the reading column must wait for the web font.** The column is set
-  in `Libre Calson Regular`; until it loads, paragraphs sit at the fallback font's metrics and
-  then move. `waitForStableLayout()` awaits `document.fonts.ready` — and races the following
-  frame against a timer, because `requestAnimationFrame` never fires in a background tab and
-  waiting on it alone wedges the open (D23).
+  in `Libre Calson Regular`; `waitForStableLayout()` awaits `document.fonts.ready` — and races
+  the next frame against a timer, because `requestAnimationFrame` never fires in a background
+  tab (D23).
+- **The page holds at most four chapters** (D37). `trimChaptersAbove()` removes older ones when
+  the reader settles and after each append, correcting the scroll offset. A font-size change
+  keeps the *bottom* paragraph in place (`keepReadingPosition`), a rotation the *top* line
+  (`ReadingAnchor`) (D36).
+- **Nothing in the reading column may be wider than the column** (`overflow-wrap: anywhere`,
+  D34). A paragraph that is only separator characters is drawn as a scene break.
+- **Zoneless:** template state must be signals. A plain field changed from a SignalR callback
+  or a timer will not re-render. Fields that only the code reads (the chapter loader's flags)
+  stay plain.
 
-- **The page holds at most four chapters** (D37): the one being read, two above, one below.
-  `trimChaptersAbove()` removes older ones when the reader settles and after each append,
-  correcting the scroll offset so nothing visible moves. A font-size change keeps the
-  *bottom* paragraph in place (`keepReadingPosition`), and a rotation keeps the *top* line
-  (`ReadingAnchor`). Both are deliberate (D36).
+### The vocabulary review (D44)
 
-- **Nothing in the reading column may be wider than the column.** Paragraphs carry
-  `overflow-wrap: anywhere` — a chapter whose scene separator is 109 hyphens grew the phone's
-  *layout viewport* to 1472px and let the page pan sideways, taking the fixed corner buttons
-  off screen (D34). A paragraph that is only separator characters is drawn as a scene break.
-- **The emitted `.js` and `.js.map` under `wwwroot/` are build output and are gitignored.** Edit the `.ts` in `src/`, never the generated file — a `dotnet build` overwrites it.
-- **The SignalR client is a global, not a module.** It is loaded by a classic `<script>` tag from the libman-restored `lib/`, so `realTimeReader.ts` types it with `import type * as SignalR` plus `declare const signalR`. That import is erased at compile time; adding a value import of `@microsoft/signalr` would emit a bare specifier the browser cannot resolve without a bundler.
+Offered only to a reader with their own AI (every hub method answers `ai-required` otherwise).
+The **server decides everything**; the page shows exercises and sends back what the reader did.
+
+- `ReviewScheduler` — Anki's SM-2 variant with Anki's default deck options (learning steps
+  1 m/10 m, graduate to 1 d, easy 4 d, ease 2.5, hard ×1.2, easy bonus 1.3, lapse → relearn
+  10 m and 1 d, minimum ease 1.3, 20 new words a day), no fuzz.
+- `ReviewPlanner` — the queue (due learning, then due reviews, then today's new words; a
+  learning card due within 20 min is taken early when nothing else is) and the **form**:
+  `match` while new/learning or interval < 3 d, `recall` (own words) < 10 d, then `sentence`
+  and — when a translation language is set — `translate` taking turns.
+- `ReviewTutor` — the prompts: one-line glosses for matching (written once per word, kept on
+  the card), the sentence to translate, and judging free answers as
+  `correct`/`partial`/`wrong` → Good/Hard/Again. Uses `IAssistant.AskAsync`. An unreadable AI
+  answer grades nothing; the exercise stays open.
+- `ReviewService` — one open exercise per reader, **in memory** (a restart drops it, nothing
+  is lost). A match's key stays on the server; pairs are checked one at a time.
+- Cards: Mongo `Users.ReviewCards`, one per (user, term), unique index. A card is created
+  lazily for each saved word and removed when its word is gone from the vocabulary.
 
 ### Saved words match in all their forms (D39)
 

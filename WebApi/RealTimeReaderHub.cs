@@ -5,6 +5,7 @@ using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Reading;
+using NovelReader.Domain.RealTimeReader.Review;
 using NovelReader.Domain.RealTimeReader.Translation;
 using NovelReader.Domain.RealTimeReader.User;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
@@ -33,6 +34,7 @@ namespace NovelReader
 		ITranslationSettingsStore translationSettings,
 		AssistantSettingsService assistantSettings,
 		AccountService accountService,
+		ReviewService reviewService,
 		ILogger<RealTimeReaderHub> logger) : Hub
 	{
 		/// <summary>Where a reader with no history starts.</summary>
@@ -494,6 +496,93 @@ namespace NovelReader
 
 			await Clients.Caller.SendAsync("ReturnVocabularyChanged", new VocabularyChangedResponse(
 				savedTerm, false, removed is null ? [savedTerm] : [.. VocabularyForms.FormsOf(removed)]));
+		}
+
+		/// <summary>
+		/// What the review has waiting, for the drawer's review section. Refused, with a code,
+		/// for a reader without an AI — the review needs one throughout.
+		/// </summary>
+		public async Task<ReviewSummaryResponse> GetReviewSummary()
+		{
+			(ReviewSummary? summary, ReviewFailure failure) = await reviewService.SummariseAsync(CallerName, Context.ConnectionAborted);
+			return summary is null
+				? new ReviewSummaryResponse(0, 0, 0, null, ReviewCodes.Failure(failure))
+				: new ReviewSummaryResponse(summary.Due, summary.New, summary.Total, summary.NextDueUtc, null);
+		}
+
+		/// <summary>
+		/// The next exercise. The server picks the words and the form — Anki's schedule decides
+		/// what is due, how well each word is known decides how it is tested.
+		/// </summary>
+		public async Task<ReviewExerciseResponse> NextReviewExercise()
+		{
+			string userName = CallerName;
+			(ReviewExercise? exercise, ReviewFailure failure) = await reviewService.NextAsync(userName, Context.ConnectionAborted);
+			if (exercise is null)
+			{
+				(ReviewSummary? summary, _) = failure == ReviewFailure.None
+					? await reviewService.SummariseAsync(userName, Context.ConnectionAborted)
+					: (null, failure);
+				return new ReviewExerciseResponse(null, null, [], [], null, null, 0, summary?.NextDueUtc, ReviewCodes.Failure(failure));
+			}
+
+			return new ReviewExerciseResponse(
+				exercise.Id,
+				ReviewCodes.Word(exercise.Kind),
+				[.. exercise.Words.Select(word => new MatchItemResponse(word.Id, word.Text))],
+				[.. exercise.Definitions.Select(definition => new MatchItemResponse(definition.Id, definition.Text))],
+				exercise.Prompt,
+				exercise.LanguageName,
+				exercise.Remaining,
+				null,
+				null);
+		}
+
+		/// <summary>One pair the reader joined in a match. The key never leaves the server.</summary>
+		public async Task<MatchCheckResponse> CheckReviewMatch(string exerciseId, string wordId, string definitionId)
+		{
+			(MatchCheck? check, ReviewFailure failure) = await reviewService.CheckMatchAsync(
+				CallerName, exerciseId ?? string.Empty, wordId ?? string.Empty, definitionId ?? string.Empty, Context.ConnectionAborted);
+
+			return check is null
+				? new MatchCheckResponse(false, false, [], ReviewCodes.Failure(failure))
+				: new MatchCheckResponse(check.Correct, check.Completed, [.. check.Graded.Select(GradedWordResponse.From)], null);
+		}
+
+		/// <summary>A typed or spoken answer, judged by the reader's AI.</summary>
+		public async Task<AnswerOutcomeResponse> SubmitReviewAnswer(string exerciseId, string answer)
+		{
+			string userName = CallerName;
+			(AnswerOutcome? outcome, ReviewFailure failure) = await reviewService.AnswerAsync(
+				userName, exerciseId ?? string.Empty, answer, Context.ConnectionAborted);
+
+			if (outcome is null)
+			{
+				if (failure == ReviewFailure.AssistantUnavailable)
+				{
+					logger.LogWarning("Review answer could not be judged for {User}", userName);
+				}
+
+				return new AnswerOutcomeResponse(null, null, null, null, ReviewCodes.Failure(failure));
+			}
+
+			return new AnswerOutcomeResponse(
+				ReviewCodes.Word(outcome.Verdict),
+				outcome.Feedback,
+				outcome.Reference,
+				GradedWordResponse.From(outcome.Graded),
+				null);
+		}
+
+		/// <summary>"I don't know": the answer is shown, and the word starts over.</summary>
+		public async Task<GiveUpResponse> GiveUpReviewExercise(string exerciseId)
+		{
+			(GiveUpOutcome? outcome, ReviewFailure failure) = await reviewService.GiveUpAsync(
+				CallerName, exerciseId ?? string.Empty, Context.ConnectionAborted);
+
+			return outcome is null
+				? new GiveUpResponse(null, new Dictionary<string, string>(), [], ReviewCodes.Failure(failure))
+				: new GiveUpResponse(outcome.Reference, outcome.Solution, [.. outcome.Graded.Select(GradedWordResponse.From)], null);
 		}
 
 		private async Task<VocabularyForms> VocabularyFormsAsync(string userName) =>

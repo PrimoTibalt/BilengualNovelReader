@@ -1,0 +1,126 @@
+@if (isOpen()) {
+	<div class="review-scrim"></div>
+	<div class="review-panel" role="dialog" aria-label="Vocabulary review">
+		<header class="review-panel__header">
+			<span class="review-panel__title">review@if (instruction()) {<span class="review-panel__trail"> / {{ instruction() }}</span>}</span>
+			<span class="review-panel__header-right">
+				<span class="review-panel__counter">{{ counter() }}</span>
+				<button type="button" class="review-panel__close" aria-label="Close the review" (click)="close()">✕</button>
+			</span>
+		</header>
+
+		<div #body class="review-panel__body">
+			@switch (phase()) {
+				@case ("loading") {
+					<p class="review-panel__waiting">preparing…</p>
+				}
+				@case ("done") {
+					<p class="review-panel__message">{{ nextDueText() }}</p>
+				}
+				@case ("failed") {
+					<p class="review-panel__error" role="alert">{{ message() }}</p>
+				}
+				@case ("result") {
+					@if (result(); as shown) {
+						<p class="review-result__verdict review-result__verdict--{{ shown.verdict }}">{{ verdictLabels[shown.verdict] }}</p>
+						@if (shown.feedback) {
+							<p class="review-result__feedback">{{ shown.feedback }}</p>
+						}
+						@if (shown.reference) {
+							<p class="review-result__reference"><span class="review-result__label">{{ kind() === "translate" ? "a good translation" : "meaning" }}</span>{{ shown.reference }}</p>
+						}
+						@if (shown.solution.length > 0) {
+							<ul class="review-result__solution">
+								@for (pair of shown.solution; track pair.word) {
+									<li><span class="review-result__word">{{ pair.word }}</span> — {{ pair.definition }}</li>
+								}
+							</ul>
+						}
+						<ul class="review-result__graded">
+							@for (graded of shown.graded; track graded.word) {
+								<li><span class="review-result__word">{{ graded.word }}</span> back {{ when(graded) }}</li>
+							}
+						</ul>
+					}
+				}
+				@default {
+					@if (kind() === "match") {
+						<!-- A word, then its meaning, or the other way round. -->
+						<div class="review-match">
+							<ul class="review-match__column review-match__column--words" role="listbox" aria-label="Words">
+								@for (word of words(); track word.id; let index = $index) {
+									<li class="review-match__item review-match__item--word" role="option"
+										[class.review-match__item--cursor]="side() === 'words' && cursor() === index"
+										[class.review-match__item--picked]="picked()?.id === word.id"
+										[class.review-match__item--matched]="word.matched"
+										[class.review-match__item--wrong]="isWrong(word.id)"
+										[attr.aria-selected]="picked()?.id === word.id"
+										(click)="pick('words', word)">{{ word.text }}</li>
+								}
+							</ul>
+							<ul class="review-match__column review-match__column--definitions" role="listbox" aria-label="Meanings">
+								@for (definition of definitions(); track definition.id; let index = $index) {
+									<li class="review-match__item" role="option"
+										[class.review-match__item--cursor]="side() === 'definitions' && cursor() === index"
+										[class.review-match__item--picked]="picked()?.id === definition.id"
+										[class.review-match__item--matched]="definition.matched"
+										[class.review-match__item--wrong]="isWrong(definition.id)"
+										[attr.aria-selected]="picked()?.id === definition.id"
+										(click)="pick('definitions', definition)">{{ definition.text }}</li>
+								}
+							</ul>
+						</div>
+					} @else {
+						<p class="review-prompt" [class.review-prompt--sentence]="kind() === 'translate'">{{ exercise()?.prompt }}</p>
+						<div class="review-answer">
+							<textarea #answerField class="review-answer__field" rows="3" spellcheck="true"
+								aria-label="Your answer" [disabled]="phase() === 'checking'"
+								[placeholder]="kind() === 'translate' ? 'your English translation…' : kind() === 'sentence' ? 'your sentence…' : 'its meaning, in your own words…'"
+								[value]="answer()" (input)="answer.set(answerField.value)"
+								(keydown)="onAnswerKey($event, answerField)"
+								(focus)="onEditingChange(true)" (blur)="onEditingChange(false)"></textarea>
+							@if (speechAvailable) {
+								<button type="button" class="review-answer__mic" [class.review-answer__mic--on]="listening()"
+									[attr.aria-pressed]="listening()" [attr.aria-label]="listening() ? 'Stop dictating' : 'Dictate the answer'"
+									[disabled]="phase() === 'checking'" (mousedown)="$event.preventDefault()" (click)="toggleVoice()">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+										stroke-linejoin="round" aria-hidden="true">
+										<rect x="9" y="3" width="6" height="11" rx="3" />
+										<path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+									</svg>
+								</button>
+							}
+						</div>
+						@if (phase() === "checking") {
+							<p class="review-panel__waiting">checking…</p>
+						} @else if (listening()) {
+							<p class="review-panel__waiting">listening… press v or the mic to stop</p>
+						} @else if (message()) {
+							<p class="review-panel__error" role="alert">{{ message() }}</p>
+						}
+					}
+				}
+			}
+		</div>
+
+		<!-- The tap toolbar; CSS shows it on touch and the hint text on a keyboard. -->
+		<div class="review-panel__buttons">
+			@switch (phase()) {
+				@case ("exercise") {
+					@if (kind() !== "match") {
+						<button type="button" class="review-panel__button" (click)="submit()">check</button>
+					}
+					<button type="button" class="review-panel__button" (click)="giveUp()">don't know</button>
+				}
+				@case ("result") {
+					<button type="button" class="review-panel__button" (click)="activate()">next</button>
+				}
+				@case ("failed") {
+					<button type="button" class="review-panel__button" (click)="activate()">retry</button>
+				}
+			}
+			<button type="button" class="review-panel__button" (click)="close()">close</button>
+		</div>
+		<footer class="review-panel__hints">{{ hints() }}</footer>
+	</div>
+}

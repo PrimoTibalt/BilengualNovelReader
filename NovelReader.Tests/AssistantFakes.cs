@@ -61,6 +61,18 @@ namespace NovelReader.Tests
 			LastLanguage = targetLanguageName;
 			return Task.FromResult(Translation);
 		}
+
+		/// <summary>Answers by the first rule whose key appears in the instructions.</summary>
+		public Dictionary<string, Func<string, string?>> Answers { get; } = [];
+		public List<(string Instructions, string Question)> Asked { get; } = [];
+
+		public Task<string?> AskAsync(AssistantSettings settings, string instructions, string question, CancellationToken cancellationToken = default)
+		{
+			Calls++;
+			Asked.Add((instructions, question));
+			Func<string, string?>? answer = Answers.FirstOrDefault(rule => instructions.Contains(rule.Key)).Value;
+			return Task.FromResult(answer?.Invoke(question));
+		}
 	}
 
 	internal sealed class InMemoryTranslationSettingsStore : ITranslationSettingsStore

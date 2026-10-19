@@ -6,6 +6,7 @@ using NovelReader.Data.Sqlite;
 using NovelReader.Dictionary;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Reading;
+using NovelReader.Domain.RealTimeReader.Review;
 using NovelReader.Domain.RealTimeReader.User;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -35,7 +36,8 @@ namespace NovelReader
 			builder.Services.AddSingleton<ChapterReader>();
 			builder.Services.AddSingleton<NovelLibraryService>();
 			builder.Services.AddSingleton<VocabularyBaseForms>();
-			builder.Services.AddSingleton<AssetVersion>();
+			builder.Services.AddSingleton(TimeProvider.System);
+			builder.Services.AddSingleton<ReviewService>();
 
 			// Also what the auth cookie is signed with, so persisting the keys keeps readers
 			// signed in across restarts as well as keeping their stored API keys readable (D35).
@@ -109,22 +111,9 @@ namespace NovelReader
 
 			// No UseHsts: nginx sends Strict-Transport-Security for the whole domain, and a
 			// second, shorter header from here only contradicted it (D42).
-      string? assetVersion = app.Services.GetRequiredService<AssetVersion>().PathPrefix;
-			// Versioned assets: /_v/{token}/… serves the same wwwroot files, but the token
-			// changes with every build (D25), so a returning reader fetches fresh URLs while the
-			// old ones stay cacheable forever. This mount comes first so its prefix wins.
-			app.UseStaticFiles(new StaticFileOptions
-			{
-				RequestPath = assetVersion,
-				OnPrepareResponse = context =>
-					context.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable",
-			});
-
-			app.UseStaticFiles(new StaticFileOptions
-			{
-				OnPrepareResponse = context =>
-					context.Context.Response.Headers.CacheControl = "no-cache",
-			});
+			// The Angular build's hashed files are cached for good; the shell, served by the
+			// page controllers, never is.
+			app.UseClientAssets();
 
 			app.UseAuthentication();
 			app.UseAuthorization();
