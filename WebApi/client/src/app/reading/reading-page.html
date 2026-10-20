@@ -64,6 +64,11 @@
 	}
 </article>
 
+<!-- While a chapter is on its way: at the bottom, where the reader is waiting for it (D48). -->
+@if (chapterInFlight(); as chapterNumber) {
+	<p class="chapter-loading" role="status">loading chapter {{ chapterNumber }}<app-progress-dots /></p>
+}
+
 <app-definition-box />
 
 <!-- The left-hand drawer (D35). A new kind of setting is a new section here; the drawer scrolls
@@ -83,3 +88,9 @@
 <div id="connection-status" class="connection-status" role="status" [hidden]="connectionState() !== 'reconnecting'">
 	@if (connectionState() === "reconnecting") { reconnecting… }
 </div>
+
+<!-- `s` on a selection saves without opening the box, so this says the save is under way until
+     the underline appears. It gives way to `reconnecting…`, which explains any wait (D48). -->
+@if (savingSelection() && connectionState() !== "reconnecting") {
+	<div class="activity-status" role="status">saving<app-progress-dots /></div>
+}

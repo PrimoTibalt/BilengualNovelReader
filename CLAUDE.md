@@ -274,6 +274,9 @@ Things to keep in mind when editing:
   (`ReadingAnchor`) (D36).
 - **Nothing in the reading column may be wider than the column** (`overflow-wrap: anywhere`,
   D34). A paragraph that is only separator characters is drawn as a scene break.
+- **Waiting on the server is shown with `<app-progress-dots />`** (D48) after a word saying
+  what is happening: `saving...` in the box and in a bottom-left chip, `loading chapter N...`
+  under the column. It is CSS only (`tui.css`).
 - **Zoneless:** template state must be signals. A plain field changed from a SignalR callback
   or a timer will not re-render. Fields that only the code reads (the chapter loader's flags)
   stay plain.

@@ -104,6 +104,34 @@ html.touch-input .data-chapter-title {
 }
 
 /*
+ * `loading chapter 12...` under the column while the next chapter is on its way (D48). It
+ * waits a moment before showing, so a chapter that was already prefetched — most of them —
+ * arrives without a flicker.
+ */
+.chapter-loading {
+	margin: 1.5em 0 3em;
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	color: var(--tui-dim);
+	text-align: center;
+	animation: chapter-loading-appear 0s linear 250ms both;
+}
+
+/*
+ * On an empty page — a novel opening, a jump to a chapter — it would otherwise be the first
+ * line, under the fixed corner buttons, which on a phone cover most of it. Measured on a
+ * 412px-wide phone: `☰ navigate` hid the chapter number and the dots.
+ */
+#novel-paragraphs:not(:has(p)) + .chapter-loading {
+	margin-top: 35vh;
+}
+
+@keyframes chapter-loading-appear {
+	from { visibility: hidden; }
+	to { visibility: visible; }
+}
+
+/*
  * The top-right corner: the navigation hint, and under it the definition button a touch
  * reader gets while text is selected (D26). Fixed once, here, so the two never have to agree
  * on an offset — the second one simply sits below the first.
@@ -157,6 +185,25 @@ html.touch-input .data-chapter-title {
 	user-select: none;
 }
 
+/* The same corner, dim rather than red: something the reader asked for is under way (D48). */
+.activity-status {
+	position: fixed;
+	left: 12px;
+	bottom: 12px;
+	z-index: 80;
+	font-family: var(--tui-mono);
+	font-size: var(--tui-scale);
+	line-height: 1.5;
+	color: var(--tui-dim);
+	background-color: var(--tui-bg);
+	border: 1px solid var(--tui-rule);
+	padding: 0.3em 0.6em;
+	pointer-events: none;
+	user-select: none;
+	/* A save answered at once (most are) never flashes it; see `.chapter-loading`. */
+	animation: chapter-loading-appear 0s linear 250ms both;
+}
+
 /* The Angular hosts of the chrome add no box of their own; each draws its own panel. */
 app-root,
 app-navigation-menu,
@@ -166,6 +213,7 @@ app-appearance-section,
 app-assistant-section,
 app-password-section,
 app-review-section,
-app-review-overlay {
+app-review-overlay,
+app-progress-dots {
 	display: contents;
 }

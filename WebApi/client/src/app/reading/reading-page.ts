@@ -14,6 +14,7 @@ import {
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { appUrl } from "../core/app-base";
 import type { ChapterView, ConnectionState, NovelSummary } from "../core/hub-models";
+import { ProgressDots } from "../core/progress-dots";
 import { KeyboardRouter, type KeyMode, bindings } from "../core/keyboard-router";
 import { isTouchPrimary, markPointerMode } from "../core/pointer";
 import { ReaderConnection } from "../core/reader-connection";
@@ -91,6 +92,7 @@ const fontChangeSettleInMilliseconds = 200;
   selector: "app-reading-page",
   imports: [
     AppearanceSection,
+    ProgressDots,
     AssistantSection,
     DefinitionBox,
     NavigationMenu,
@@ -136,6 +138,10 @@ export class ReadingPage implements AfterViewInit {
    * having to leave the selection alone (D26).
    */
   #pendingSelection: SelectedTerm | undefined;
+  /** The chapter on its way, shown under the column as `loading chapter 12...` (D48). */
+  protected readonly chapterInFlight = signal<number | undefined>(undefined);
+  /** A word saved straight from a selection, with no box open to say so, until the server answers (D48). */
+  protected readonly savingSelection = signal<string | undefined>(undefined);
   protected readonly defineAffordanceShown = signal(false);
   protected readonly translateAffordanceShown = signal(false);
 
@@ -487,7 +493,11 @@ export class ReadingPage implements AfterViewInit {
     const selected = readSelection();
     if (!selected) return;
 
-    this.#connection.saveWord(this.#novelName, selected.text);
+    const text = selected.text;
+    this.savingSelection.set(text);
+    void this.#connection.saveWord(this.#novelName, text).finally(() => {
+      if (this.savingSelection() === text) this.savingSelection.set(undefined);
+    });
   }
 
   #closeDefinitionBox(): void {
@@ -593,7 +603,15 @@ export class ReadingPage implements AfterViewInit {
   }
 
   async #loadAndAppend(chapterNumber: number): Promise<ChapterView> {
-    const chapter = await this.#connection.loadChapter(this.#novelName, chapterNumber);
+    this.chapterInFlight.set(chapterNumber);
+    let chapter: ChapterView;
+    try {
+      chapter = await this.#connection.loadChapter(this.#novelName, chapterNumber);
+    } finally {
+      // Cleared before the chapter is rendered, so the two are never both in the column while
+      // it is measured (D36, D37).
+      this.chapterInFlight.set(undefined);
+    }
 
     if (chapter.found) {
       this.#appendChapter(chapter);

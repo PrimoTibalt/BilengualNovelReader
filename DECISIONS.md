@@ -1837,3 +1837,47 @@ Wiktionary, *bank*, *saw* and *spring* opened on the sense the paragraph used.
 **Not done.** The definition box does not say that the order was chosen. Each lookup without an
 AI now waits about 350 ms more for the pick, which a cache keyed by (term, paragraph) could save
 on a re-read. The thresholds come from hand-made cases, not real pages.
+
+## D48 — A dot spinner while a save or a chapter is on its way
+
+**Status:** Adopted · 2026-10-20
+
+**Context.** Saving a word and loading the next chapter both wait on the server, and nothing
+on the page said so. A save showed nothing until the underline appeared, and the bottom of the
+page stayed blank until the chapter arrived. On a slow scrape or a cold Mongo that looks like
+the press or the scroll did nothing.
+
+**Decision.**
+- **`ProgressDots`** (`app/core/progress-dots.ts`) draws `.  ` → `.. ` → `...` → `.  `, 400 ms a
+  step, after the words that say what is happening. It is pure CSS (`.progress-dots` in
+  `tui.css`): each dot keeps its room and two of them step their opacity, so the text never
+  shifts and an idle page runs no timer. With reduced motion all three dots just stand.
+- **Saving or deleting in the box:** `s save` becomes `saving...` (and the tap button reads
+  `saving...`, disabled) from the press until the hub call settles. `saveWord`/`deleteWord` now
+  return that promise. The vocabulary push arrives before the call's own answer, so the dots
+  give way to the new state. A failed call clears them, and a second press waits.
+- **Saving straight from a selection** (`s` with no box open): a dim `saving...` chip in the
+  bottom-left corner, which gives way to `reconnecting…` there.
+- **A chapter on its way:** `loading chapter 12...` under the column, set in `#loadAndAppend`
+  and cleared *before* the chapter is rendered, so the two are never in the column together
+  while it is measured (D36, D37).
+- On an empty page (a novel opening, a jump to a chapter) the chapter line sits at 35vh. As the
+  first line it was under the fixed corner buttons, and on the phone `☰ navigate` covered the
+  chapter number and the dots.
+- The chip and the chapter line wait 250 ms before showing, so a prefetched chapter or a quick
+  save does not flash them. The box's label does not wait, because it is the answer to the
+  press.
+
+**Verified.** The client builds. Stepping the animation's clock in Chromium gave `.  ` at
+0–399 ms, `.. ` at 401–799, `...` at 801–1199 and `.  ` again at 1201. In the running app,
+`s` on a selection showed the `saving...` chip and cleared it when the hub answered. On a
+phone (Galaxy S23+, Firefox for Android, through `adb reverse`, with local Mongo and screenshots
+over adb), a jump to chapter 50 showed `loading chapter 50` with the dots stepping, clear of the
+corner buttons. Flinging to the end of chapter 51 showed `loading chapter 52.` under the text.
+The box's tap button read `saving.` and `saving..`, disabled, while Mongo was paused, and turned
+into `delete` once it resumed.
+
+**Not done.** The `translating…` and `loading…` labels keep their static ellipsis. When a chapter
+load fails, the line clears and nothing replaces it: chapter 52 failed on the phone with the
+source site's empty-200, the page took it for the end of the novel (existing behaviour, see
+`ParagraphsRetriever`), and the page shrinking by the line's height moved the text by it.

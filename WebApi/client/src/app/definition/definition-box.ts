@@ -12,6 +12,7 @@ import {
   viewChild,
 } from "@angular/core";
 import type { DefinitionView, TranslationLanguageView, TranslationView } from "../core/hub-models";
+import { ProgressDots } from "../core/progress-dots";
 
 /**
  * The comic-panel definition box: a square panel with a triangular tail pointing at the
@@ -39,8 +40,9 @@ export interface SettingsFormCallbacks {
 }
 
 export interface DefinitionBoxCallbacks {
-  readonly onSave: (term: string) => void;
-  readonly onDelete: (term: string) => void;
+  /** Settles when the server has answered, which is when the box stops saying `saving...`. */
+  readonly onSave: (term: string) => Promise<void> | void;
+  readonly onDelete: (term: string) => Promise<void> | void;
   readonly onTranslate: (term: string) => void;
   readonly onEditSettings: () => void;
   readonly onClose: () => void;
@@ -77,11 +79,19 @@ interface ToolbarButton {
   readonly ariaLabel: string;
   readonly run: () => void;
   readonly disabled?: boolean;
+  /** Waiting on the server: the label is followed by the progress dots (D48). */
+  readonly busy?: boolean;
+}
+
+/** One item of the hint bar; `busy` as for a button. */
+interface HintPart {
+  readonly text: string;
+  readonly busy?: boolean;
 }
 
 @Component({
   selector: "app-definition-box",
-  imports: [NgTemplateOutlet],
+  imports: [NgTemplateOutlet, ProgressDots],
   templateUrl: "./definition-box.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -94,6 +104,9 @@ export class DefinitionBox {
   protected readonly view = signal<DefinitionView | undefined>(undefined);
   protected readonly senseIndex = signal(0);
   protected readonly isSaved = signal(false);
+  /** A save or delete sent and not yet answered (D48); a second press waits for it. */
+  protected readonly change = signal<"saving" | "deleting" | undefined>(undefined);
+  #pendingChange: Promise<void> | undefined;
   /** Kept so the panel can be re-placed when its content changes. */
   readonly #anchor = signal<DOMRect | undefined>(undefined);
   protected readonly translation = signal<TranslationView | undefined>(undefined);
@@ -182,22 +195,23 @@ export class DefinitionBox {
     return options.find((language) => language.code === stored)?.code ?? options[0]?.code;
   });
 
-  protected readonly hints = computed(() => {
-    if (this.mode() === "settings") return "enter next  ·  esc cancel";
+  protected readonly hints = computed<readonly HintPart[]>(() => {
+    if (this.mode() === "settings") return [{ text: "enter next" }, { text: "esc cancel" }];
 
     const view = this.view();
     // Nothing but Escape means anything until there is a definition to act on — except the
     // translation, which may already be here or on its way (D32).
-    if (!view) return this.translationPending() ? "translating…  ·  esc close" : "esc close";
+    if (!view) return this.translationPending() ? [{ text: "translating…" }, { text: "esc close" }] : [{ text: "esc close" }];
 
-    const parts: string[] = [];
-    if (view.senses.length > 1) parts.push("j/k senses");
-    parts.push(this.isSaved() ? "d delete" : "s save");
-    parts.push(this.translationPending() ? "translating…" : "t translate");
-    parts.push("e settings");
-    parts.push("esc close");
-    if (view.sourceName) parts.push(`— ${view.sourceName}`);
-    return parts.join("  ·  ");
+    const change = this.change();
+    const parts: HintPart[] = [];
+    if (view.senses.length > 1) parts.push({ text: "j/k senses" });
+    parts.push(change ? { text: change, busy: true } : { text: this.isSaved() ? "d delete" : "s save" });
+    parts.push({ text: this.translationPending() ? "translating…" : "t translate" });
+    parts.push({ text: "e settings" });
+    parts.push({ text: "esc close" });
+    if (view.sourceName) parts.push({ text: `— ${view.sourceName}` });
+    return parts;
   });
 
   /** The tap toolbar: the same actions as the key hints, one button each. */
@@ -218,9 +232,12 @@ export class DefinitionBox {
       buttons.push({ label: "›", ariaLabel: "Next sense", run: () => this.nextSense() });
     }
 
-    buttons.push(this.isSaved()
-      ? { label: "delete", ariaLabel: "Delete word", run: () => this.deleteTerm() }
-      : { label: "save", ariaLabel: "Save word", run: () => this.save() });
+    const change = this.change();
+    buttons.push(change
+      ? { label: change, ariaLabel: change === "saving" ? "Saving word" : "Deleting word", run: () => {}, disabled: true, busy: true }
+      : this.isSaved()
+        ? { label: "delete", ariaLabel: "Delete word", run: () => this.deleteTerm() }
+        : { label: "save", ariaLabel: "Save word", run: () => this.save() });
 
     const pending = this.translationPending();
     buttons.push({ label: pending ? "translating…" : "translate", ariaLabel: "Translate", run: () => this.translate(), disabled: pending });
@@ -340,6 +357,8 @@ export class DefinitionBox {
     this.#callbacks.set(undefined);
     this.senseIndex.set(0);
     this.isSaved.set(false);
+    this.change.set(undefined);
+    this.#pendingChange = undefined;
     this.#anchor.set(undefined);
     this.translation.set(undefined);
     this.translationPending.set(false);
@@ -382,12 +401,32 @@ export class DefinitionBox {
 
   save(): void {
     const view = this.view();
-    if (view) this.#callbacks()?.onSave(view.term);
+    const callbacks = this.#callbacks();
+    if (view && callbacks && !this.change()) this.#track("saving", callbacks.onSave(view.term));
   }
 
   deleteTerm(): void {
     const view = this.view();
-    if (view) this.#callbacks()?.onDelete(view.term);
+    const callbacks = this.#callbacks();
+    if (view && callbacks && !this.change()) this.#track("deleting", callbacks.onDelete(view.term));
+  }
+
+  /**
+   * Shows `saving...` until the hub call settles. The vocabulary push that flips save to
+   * delete arrives before the call's own answer, so the dots give way to the new state, never
+   * to the old one. A call that fails clears them too, and the button is pressable again.
+   */
+  #track(change: "saving" | "deleting", result: Promise<void> | void): void {
+    const pending = Promise.resolve(result);
+    this.#pendingChange = pending;
+    this.change.set(change);
+
+    void pending.finally(() => {
+      // A box closed or reopened on another word since then has its own state.
+      if (this.#pendingChange !== pending) return;
+      this.#pendingChange = undefined;
+      this.change.set(undefined);
+    });
   }
 
   translate(): void {

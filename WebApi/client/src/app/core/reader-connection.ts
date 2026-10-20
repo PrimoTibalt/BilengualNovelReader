@@ -177,12 +177,13 @@ export class ReaderConnection {
     void this.#send("GetDefinition", surfaceForm, paragraph);
   }
 
-  saveWord(novelName: string, surfaceForm: string): void {
-    void this.#send("SaveWord", novelName, surfaceForm);
+  /** Settles once the server has answered, or the call has failed (D48). */
+  saveWord(novelName: string, surfaceForm: string): Promise<void> {
+    return this.#send("SaveWord", novelName, surfaceForm);
   }
 
-  deleteWord(surfaceForm: string): void {
-    void this.#send("DeleteWord", surfaceForm);
+  deleteWord(surfaceForm: string): Promise<void> {
+    return this.#send("DeleteWord", surfaceForm);
   }
 
   /**

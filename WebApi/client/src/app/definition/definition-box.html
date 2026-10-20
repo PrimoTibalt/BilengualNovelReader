@@ -62,10 +62,10 @@
 			<div class="definition-box__buttons">
 				@for (button of buttons(); track button.label) {
 					<button type="button" class="definition-box__button" [attr.aria-label]="button.ariaLabel"
-						[disabled]="button.disabled ?? false" (click)="button.run()">{{ button.label }}</button>
+						[disabled]="button.disabled ?? false" (click)="button.run()">{{ button.label }}@if (button.busy) {<app-progress-dots />}</button>
 				}
 			</div>
-			<footer class="definition-box__hints">{{ hints() }}</footer>
+			<footer class="definition-box__hints">@for (part of hints(); track $index) {@if (!$first) {<span> · </span>}{{ part.text }}@if (part.busy) {<app-progress-dots />}}</footer>
 		</div>
 		<div class="definition-box__tail"></div>
 	</div>
