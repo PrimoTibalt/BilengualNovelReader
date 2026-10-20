@@ -276,7 +276,8 @@ Things to keep in mind when editing:
   D34). A paragraph that is only separator characters is drawn as a scene break.
 - **Waiting on the server is shown with `<app-progress-dots />`** (D48) after a word saying
   what is happening: `saving...` in the box and in a bottom-left chip, `loading chapter N...`
-  under the column. It is CSS only (`tui.css`).
+  under the column. It is CSS only (`tui.css`). The line under the column (`.chapter-status`)
+  is also where `chapter N did not load · retry` and `no chapter N yet` appear (D49).
 - **Zoneless:** template state must be signals. A plain field changed from a SignalR callback
   or a timer will not re-render. Fields that only the code reads (the chapter loader's flags)
   stay plain.
@@ -369,13 +370,16 @@ changing the password. Counts are kept for names that have no account too, so a 
 name exists. Every attempt is counted *before* the password is checked, which is what holds
 the limit against parallel guesses.
 
-`ParagraphsRetriever` treats the source site's occasional `200`-with-no-paragraphs as a hard
-failure; it wants a retry with backoff, and a way to tell a transient apart from the actual end
-of a novel. It also recognises the site's "page moved" notice **by its wording** and throws
-rather than letting it be cached as a two-paragraph chapter (D21) — if the site rewords that
-notice, `ParagraphsRetrieverTests` needs updating with it. Behind that, when Jev is configured,
-`ChapterPreparationService` asks `IChapterTextCheck` about every fresh scrape and refuses a
-page that is confidently a site page (notice, error, paywall, browser check) the same way (D47).
+`ParagraphsRetriever` tells **a chapter the site does not have** (`ChapterNotFoundException`:
+a 404, the 200 page titled "Page Chapter Not Found", or D21's "page moved" notice, which is that
+page's body) from **one it did not serve this time** (`ChapterUnavailableException`: the site's
+random 302 to another site — about one request in six — an error status, a page with no
+content div) (D49). The NovelFire client does **not follow redirects**, which is what makes the
+302 visible. `ChapterPreparationService` retries unavailable chapters after 1 s and 3 s
+(`RetryDelays`), never not-found ones; the hub then answers `failure: "unavailable"`, which the
+page shows as `chapter N did not load · retry` instead of taking it for the end of the novel.
+When Jev is configured, every fresh scrape is also put to `IChapterTextCheck`, and a confidently
+non-chapter page counts as unavailable (D47).
 
 The chapter menu lists only a window around the current chapter, but any number can be typed
 into its filter to jump straight there (`MenuScreen.itemsFromFilter`).

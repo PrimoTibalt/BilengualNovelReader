@@ -15,6 +15,13 @@ namespace NovelReader.Domain.RealTimeReader.Reading
         IChapterTextCheck? chapterCheck = null
     )
     {
+        /// <summary>
+        /// The waits between attempts at a chapter the site did not serve (D49). Its random
+        /// redirect hit about one request in six when measured, so three attempts all failing
+        /// is rare; a chapter that is really gone answers "not found" and is not retried.
+        /// </summary>
+        public IReadOnlyList<TimeSpan> RetryDelays { get; init; } = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3)];
+
         public async Task<PreparedChapter> PrepareAsync(
             string userName,
             string novelName,
@@ -90,15 +97,34 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 
         private async Task<Dictionary<int, string>> ScrapeAsync(string uriPath)
         {
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    return await ScrapeOnceAsync(uriPath);
+                }
+                catch (Exception exception) when (IsWorthRetrying(exception) && attempt < RetryDelays.Count)
+                {
+                    await Task.Delay(RetryDelays[attempt]);
+                }
+            }
+        }
+
+        private async Task<Dictionary<int, string>> ScrapeOnceAsync(string uriPath)
+        {
             Dictionary<int, string> paragraphs = await paragraphsRetriever.GetParagraphsAsync(uriPath);
             if (chapterCheck is not null && await chapterCheck.IsSitePageAsync(paragraphs))
             {
-                // Thrown, like the "page moved" notice (D21), so that nothing caches it; the next
-                // load scrapes again, by which time the site may be serving the chapter.
-                throw new InvalidOperationException($"'{uriPath}' is a page of the site's, not a chapter.");
+                // Thrown so that nothing caches it, and as "unavailable" so that it is asked for
+                // again: the site's own pages come and go like its redirect does.
+                throw new ChapterUnavailableException($"'{uriPath}' is a page of the site's, not a chapter.");
             }
 
             return paragraphs;
         }
+
+        /// <summary>Anything but the site saying the chapter does not exist: a timeout and a dropped connection pass too.</summary>
+        private static bool IsWorthRetrying(Exception exception) =>
+            exception is ChapterUnavailableException or HttpRequestException or TaskCanceledException;
     }
 }

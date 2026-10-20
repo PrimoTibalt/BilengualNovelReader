@@ -176,14 +176,25 @@ namespace NovelReader
 					paragraphs.Add(new ParagraphResponse(number, markup));
 				}
 			}
+			catch (ChapterNotFoundException)
+			{
+				// Past the end of what is published: an answer, not a failure (D49).
+				return new ChapterResponse(novelName, chapterNumber, [], false);
+			}
 			catch (Exception exception)
 			{
-				// A chapter that will not load must not take the connection down with it.
+				// A chapter that will not load must not take the connection down with it. The
+				// page is told it was not served, so that it offers a retry rather than taking
+				// it for the end of the novel (D49).
 				logger.LogWarning(exception, "Could not load chapter {Chapter} of {Novel}", chapterNumber, novelName);
+				return new ChapterResponse(novelName, chapterNumber, [], false, ChapterUnavailable);
 			}
 
 			return new ChapterResponse(novelName, chapterNumber, paragraphs, paragraphs.Count > 0);
 		}
+
+		/// <summary><see cref="ChapterResponse.Failure"/> for a chapter the site did not serve, even after retrying.</summary>
+		internal const string ChapterUnavailable = "unavailable";
 
 		/// <summary>
 		/// The reader's bookmark: the last paragraph they actually had on screen. The page

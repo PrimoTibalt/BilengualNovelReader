@@ -2,6 +2,7 @@ using System.Globalization;
 using NovelReader.Dictionary;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Definitions;
+using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.Review;
 
@@ -180,17 +181,21 @@ namespace NovelReader.Tests
 		private readonly CountingParagraphsRetriever retriever = new();
 
 		private ChapterPreparationService Service(bool sitePage) =>
-			new(new FakeNovelRepository(new FakeCollectionOfChapters()), retriever, new EmptyVocabularyRepository(), new FixedCheck(sitePage));
+			new(new FakeNovelRepository(new FakeCollectionOfChapters()), retriever, new EmptyVocabularyRepository(), new FixedCheck(sitePage))
+			{
+				RetryDelays = [TimeSpan.Zero]
+			};
 
 		[Fact]
-		public async Task A_site_page_is_refused_and_scraped_again_next_time()
+		public async Task A_site_page_is_refused_retried_and_scraped_again_next_time()
 		{
 			ChapterPreparationService service = Service(sitePage: true);
 
-			await Assert.ThrowsAsync<InvalidOperationException>(() => service.PrepareAsync("anton", "reverend-insanity", 7));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => service.PrepareAsync("anton", "reverend-insanity", 7));
+			await Assert.ThrowsAsync<ChapterUnavailableException>(() => service.PrepareAsync("anton", "reverend-insanity", 7));
+			await Assert.ThrowsAsync<ChapterUnavailableException>(() => service.PrepareAsync("anton", "reverend-insanity", 7));
 
-			Assert.Equal(2, retriever.CallsForChapter(7));
+			// Each load tries twice (one retry), and nothing was stored between them.
+			Assert.Equal(4, retriever.CallsForChapter(7));
 		}
 
 		[Fact]

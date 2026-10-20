@@ -129,6 +129,9 @@ export class ReadingPage implements AfterViewInit {
   /** Set once a chapter comes back empty, so the page stops walking off the end of the novel. */
   #reachedEnd = false;
 
+  /** What `retry` does: the load that came back unavailable, asked for again (D49). */
+  #retryUnavailable: (() => void) | undefined;
+
   /** Re-run once the connection is back, when a chapter load was cut short by losing it (D28). */
   #retryWhenConnected: (() => void) | undefined;
 
@@ -140,6 +143,10 @@ export class ReadingPage implements AfterViewInit {
   #pendingSelection: SelectedTerm | undefined;
   /** The chapter on its way, shown under the column as `loading chapter 12...` (D48). */
   protected readonly chapterInFlight = signal<number | undefined>(undefined);
+  /** A chapter the site did not serve, shown with a retry where it would have been (D49). */
+  protected readonly chapterUnavailable = signal<number | undefined>(undefined);
+  /** The chapter after the last one published, once the reader has reached it (D49). */
+  protected readonly noChapterYet = signal<number | undefined>(undefined);
   /** A word saved straight from a selection, with no box open to say so, until the server answers (D48). */
   protected readonly savingSelection = signal<string | undefined>(undefined);
   protected readonly defineAffordanceShown = signal(false);
@@ -248,6 +255,7 @@ export class ReadingPage implements AfterViewInit {
       d: { description: "define selection", run: () => this.#defineSelection() },
       t: { description: "translate selection", run: () => this.#translateSelection() },
       s: { description: "save selection", run: () => this.#saveSelection() },
+      r: { description: "retry chapter", run: () => this.retryChapter() },
       n: { description: "navigation", run: () => this.openNavigation() },
       c: { description: "settings", run: () => this.settingsPanel().open() },
     }),
@@ -603,6 +611,8 @@ export class ReadingPage implements AfterViewInit {
   }
 
   async #loadAndAppend(chapterNumber: number): Promise<ChapterView> {
+    this.chapterUnavailable.set(undefined);
+    this.#retryUnavailable = undefined;
     this.chapterInFlight.set(chapterNumber);
     let chapter: ChapterView;
     try {
@@ -616,6 +626,10 @@ export class ReadingPage implements AfterViewInit {
     if (chapter.found) {
       this.#appendChapter(chapter);
       this.#lastLoadedChapter = Math.max(this.#lastLoadedChapter, chapterNumber);
+    } else if (chapter.failure === "unavailable") {
+      // The site did not serve it, which is not the end of the novel: the reader is offered a
+      // retry where the chapter would have been (D49). The caller says what retrying means.
+      this.chapterUnavailable.set(chapterNumber);
     } else if (!chapter.failed) {
       // An empty chapter is the end of the novel. A call that never got through is not: the
       // page waits for the connection instead of deciding the novel has run out (D28).
@@ -623,6 +637,14 @@ export class ReadingPage implements AfterViewInit {
     }
 
     return chapter;
+  }
+
+  /** The `retry` button and `r`: the chapter that did not load, asked for again (D49). */
+  protected retryChapter(): void {
+    const retry = this.#retryUnavailable;
+    if (!retry || this.#loadingChapter) return;
+    this.#retryUnavailable = undefined;
+    retry();
   }
 
   /**
@@ -679,6 +701,7 @@ export class ReadingPage implements AfterViewInit {
       this.#novelName = novel;
       this.#lastLoadedChapter = 0;
       this.#reachedEnd = false;
+      this.noChapterYet.set(undefined);
 
       if (resuming && paragraphNumber <= nearTopOfChapter && chapterNumber > 1) {
         await this.#loadAndAppend(chapterNumber - 1);
@@ -690,6 +713,12 @@ export class ReadingPage implements AfterViewInit {
       if (!chapter.found) {
         if (chapter.failed) {
           this.#retryWhenConnected = () => void this.#openNovelAt(novel, chapterNumber, paragraphNumber, resuming);
+          return;
+        }
+
+        if (chapter.failure === "unavailable") {
+          // The line under the empty column says so and offers the retry (D49).
+          this.#retryUnavailable = () => void this.#openNovelAt(novel, chapterNumber, paragraphNumber, resuming);
           return;
         }
 
@@ -724,6 +753,13 @@ export class ReadingPage implements AfterViewInit {
     const reachedBottom = window.innerHeight + window.scrollY >= this.#document.body.scrollHeight - 100;
     if (!reachedBottom) return;
 
+    // Scrolling on at the bottom asks again for a chapter that did not load — and only for that:
+    // after a failed jump the column is empty, and "the next chapter" would be chapter 1 (D49).
+    if (this.#retryUnavailable) {
+      this.retryChapter();
+      return;
+    }
+
     this.#loadNextChapter(this.#lastLoadedChapter + 1);
   }
 
@@ -739,6 +775,9 @@ export class ReadingPage implements AfterViewInit {
     void this.#loadAndAppend(chapterNumber)
       .then((chapter) => {
         if (chapter.failed) this.#retryWhenConnected = () => this.#loadNextChapter(chapterNumber);
+        if (chapter.failure === "unavailable") this.#retryUnavailable = () => this.#loadNextChapter(chapterNumber);
+        // Rolling forward off the last published chapter: said once, quietly (D49).
+        else if (!chapter.found && !chapter.failed) this.noChapterYet.set(chapterNumber);
         // A new chapter below is the moment the page could exceed its limit (D37).
         if (chapter.found) this.#trimChaptersAbove();
       })

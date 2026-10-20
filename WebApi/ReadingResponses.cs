@@ -5,13 +5,16 @@ namespace NovelReader
 
 	/// <summary>
 	/// A whole chapter. Sending the chapter in one message is what lets the page restore a
-	/// reader's position without a request per paragraph (D19).
+	/// reader's position without a request per paragraph (D19). Not found with no
+	/// <see cref="Failure"/> is the end of what is published; with <c>"unavailable"</c>, the site
+	/// did not serve it and the page offers a retry (D49).
 	/// </summary>
 	public record ChapterResponse(
 		string NovelName,
 		int ChapterNumber,
 		IReadOnlyList<ParagraphResponse> Paragraphs,
-		bool Found);
+		bool Found,
+		string? Failure = null);
 
 	/// <summary>
 	/// One hit from a novel search. <see cref="Slug"/> is the name every other call uses, so

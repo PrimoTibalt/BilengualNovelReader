@@ -1,11 +1,13 @@
 using System.Net;
+using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Retrievers;
 
 namespace NovelReader.Tests
 {
 	/// <summary>
 	/// Scraping a chapter page, and telling one apart from the site's "page moved" notice —
-	/// which answers 200 and sits in the same container a chapter does (D21).
+	/// which answers 200 and sits in the same container a chapter does (D21) — and a chapter the
+	/// site does not have from one it merely did not serve this time (D49).
 	/// </summary>
 	public class ParagraphsRetrieverTests
 	{
@@ -41,7 +43,7 @@ namespace NovelReader.Tests
 				"Some novel pages moved for better user experience. Could be affected by this situation.",
 				"Please use the search function for the content you want to access or go to home page and start exploring the novels."));
 
-			InvalidOperationException thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+			ChapterNotFoundException thrown = await Assert.ThrowsAsync<ChapterNotFoundException>(
 				() => retriever.GetParagraphsAsync("book/x/chapter-999999"));
 
 			Assert.Contains("not a chapter", thrown.Message);
@@ -52,7 +54,7 @@ namespace NovelReader.Tests
 		{
 			ParagraphsRetriever retriever = Build(Page("SOME NOVEL PAGES MOVED FOR BETTER USER EXPERIENCE."));
 
-			await Assert.ThrowsAsync<InvalidOperationException>(
+			await Assert.ThrowsAsync<ChapterNotFoundException>(
 				() => retriever.GetParagraphsAsync("book/x/chapter-1"));
 		}
 
@@ -87,19 +89,45 @@ namespace NovelReader.Tests
 		{
 			ParagraphsRetriever retriever = Build("<html><body><p>elsewhere</p></body></html>");
 
-			InvalidOperationException thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+			ChapterUnavailableException thrown = await Assert.ThrowsAsync<ChapterUnavailableException>(
 				() => retriever.GetParagraphsAsync("book/x/chapter-1"));
 
 			Assert.Contains("No paragraphs found", thrown.Message);
 		}
 
-		[Fact]
-		public async Task A_failed_request_is_not_swallowed()
+		[Theory]
+		[InlineData(HttpStatusCode.TooManyRequests)]
+		[InlineData(HttpStatusCode.BadGateway)]
+		[InlineData(HttpStatusCode.Found)]
+		[InlineData(HttpStatusCode.MovedPermanently)]
+		public async Task A_refusal_an_error_or_a_redirect_is_worth_asking_again(HttpStatusCode status)
 		{
-			ParagraphsRetriever retriever = Build(Page("nope"), HttpStatusCode.TooManyRequests);
+			// The redirect is the site's random one to another site's "Loading..." page.
+			ParagraphsRetriever retriever = Build(Page("nope"), status);
 
-			await Assert.ThrowsAsync<HttpRequestException>(
-				() => retriever.GetParagraphsAsync("book/x/chapter-1"));
+			await Assert.ThrowsAsync<ChapterUnavailableException>(
+				() => retriever.GetParagraphsAsync("book/x/chapter-52"));
+		}
+
+		[Fact]
+		public async Task The_not_found_page_is_a_chapter_that_does_not_exist()
+		{
+			// What the site answers, with 200, for one past the last chapter.
+			ParagraphsRetriever retriever = Build(
+				"<html><head><title>Page Chapter Not Found</title></head><body><div id='content'>"
+				+ "<p>Novel Chapters</p><p>Latest Novels</p><p>Completed Novels</p><p>Ranking</p></div></body></html>");
+
+			await Assert.ThrowsAsync<ChapterNotFoundException>(
+				() => retriever.GetParagraphsAsync("book/x/chapter-2335"));
+		}
+
+		[Fact]
+		public async Task A_404_is_a_chapter_that_does_not_exist()
+		{
+			ParagraphsRetriever retriever = Build("", HttpStatusCode.NotFound);
+
+			await Assert.ThrowsAsync<ChapterNotFoundException>(
+				() => retriever.GetParagraphsAsync("book/x/chapter-2335"));
 		}
 	}
 }

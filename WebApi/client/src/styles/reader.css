@@ -104,17 +104,31 @@ html.touch-input .data-chapter-title {
 }
 
 /*
- * `loading chapter 12...` under the column while the next chapter is on its way (D48). It
- * waits a moment before showing, so a chapter that was already prefetched — most of them —
- * arrives without a flicker.
+ * The line under the column about the next chapter (D48, D49): `loading chapter 12...` while it
+ * is on its way, `chapter 12 did not load · retry` when the site would not serve it, `no
+ * chapter 12 yet` past the last one published. Loading waits a moment before showing, so a
+ * chapter that was already prefetched — most of them — arrives without a flicker.
  */
-.chapter-loading {
+.chapter-status {
 	margin: 1.5em 0 3em;
 	font-family: var(--tui-mono);
 	font-size: var(--tui-scale);
 	color: var(--tui-dim);
 	text-align: center;
+}
+
+.chapter-status--loading {
 	animation: chapter-loading-appear 0s linear 250ms both;
+}
+
+.chapter-status__retry {
+	appearance: none;
+	font: inherit;
+	color: var(--tui-text);
+	background-color: var(--tui-bg);
+	border: 1px solid var(--tui-border);
+	padding: 0.15em 0.6em;
+	cursor: pointer;
 }
 
 /*
@@ -122,7 +136,7 @@ html.touch-input .data-chapter-title {
  * line, under the fixed corner buttons, which on a phone cover most of it. Measured on a
  * 412px-wide phone: `☰ navigate` hid the chapter number and the dots.
  */
-#novel-paragraphs:not(:has(p)) + .chapter-loading {
+#novel-paragraphs:not(:has(p)) + .chapter-status {
 	margin-top: 35vh;
 }
 
@@ -200,7 +214,7 @@ html.touch-input .data-chapter-title {
 	padding: 0.3em 0.6em;
 	pointer-events: none;
 	user-select: none;
-	/* A save answered at once (most are) never flashes it; see `.chapter-loading`. */
+	/* A save answered at once (most are) never flashes it; see `.chapter-status--loading`. */
 	animation: chapter-loading-appear 0s linear 250ms both;
 }
 

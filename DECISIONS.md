@@ -1881,3 +1881,52 @@ into `delete` once it resumed.
 load fails, the line clears and nothing replaces it: chapter 52 failed on the phone with the
 source site's empty-200, the page took it for the end of the novel (existing behaviour, see
 `ParagraphsRetriever`), and the page shrinking by the line's height moved the text by it.
+
+## D49 — A chapter the site did not serve is retried, not taken for the end
+
+**Status:** Adopted · 2026-10-20
+
+**Context.** On the phone test (D48), chapter 52 failed and the page stopped there as if the
+novel had ended, with no message. Every failure reached the page as the same `found: false`
+that meant "past the last chapter". Requests to the source site showed two different things
+behind it:
+- **A random redirect.** About one request in six (measured on chapter 52) is answered with a
+  302 to another site's "Loading..." page. The HTTP client followed it and found no paragraphs:
+  the long-known "200 with no paragraphs". The next request gets the chapter.
+- **The real end.** Past the last chapter the site answers 200 with a page titled "Page Chapter
+  Not Found", whose body is the "page moved" notice. D21 took that notice for a notice about
+  moved pages; it is the site's not-found page.
+
+**Decision.**
+- **Two exceptions** in `Domain/Parsing`, both `InvalidOperationException`s:
+  `ChapterNotFoundException` (the site does not have it) and `ChapterUnavailableException` (not
+  served this time).
+- **`ParagraphsRetriever`** no longer follows redirects (`AllowAutoRedirect = false`). A 3xx, a
+  non-success status and a page without the content div are *unavailable*. A 404, the "Chapter
+  Not Found" title and D21's notice are *not found*.
+- **`ChapterPreparationService` retries** an unavailable chapter, a network error or a timeout
+  after 1 s and then 3 s (`RetryDelays`), then gives up. Not found is never retried. A page
+  that Jev refuses (D47) now counts as unavailable, because the site's own pages come and go
+  like the redirect does.
+- **The hub answers** `failure: "unavailable"` for anything that still failed. Not found with no
+  failure is the end of the novel, logged as nothing at all.
+- **The page:**
+  - An unavailable chapter shows `chapter 53 did not load · retry` where the loading line was.
+    The button, `r`, or scrolling on at the bottom asks again; after a failed jump the scroll
+    retries the jump, never "chapter 1" of an empty page.
+  - Rolling off the last chapter shows `no chapter 2335 yet` once, quietly.
+  - The three lines share `.chapter-status`, so one replaces another without the text moving.
+
+**Verified.** 8 new unit tests cover the retriever's classification (redirects, errors, 404,
+the not-found title) and the retry rules (retried until served, stops after the last wait, not
+found asked once). All 329 pass. On the phone (Firefox for Android) the app was run with its
+proxy pointed at a closed port: scrolling to the end of chapter 52 showed `loading chapter
+53...`, then `chapter 53 did not load · retry`. The server log showed three attempts for the
+reader's load and three for the background prefetch. With the app restarted on the real proxy,
+the page reconnected by itself, and tapping `retry` showed `loading chapter 53...` and then the
+chapter in place of the line. Jumping to chapter 2334 of *Reverend Insanity* and scrolling to
+its end showed `no chapter 2335 yet`: the live site's not-found page, asked for once.
+
+**Not done.** A gap in a novel's numbering, a chapter the site never had in the middle, still
+reads as the end; the catalogue's chapter count (D22) could tell the two apart. The retry is
+by hand after the server's three attempts; nothing retries on a timer.

@@ -101,6 +101,11 @@ export interface ChapterWire {
   readonly chapterNumber: number;
   readonly paragraphs: readonly ParagraphView[];
   readonly found: boolean;
+  /**
+   * `"unavailable"` when the source site did not serve the chapter, even after the server
+   * retried: worth asking again. Not found without it is the end of what is published (D49).
+   */
+  readonly failure?: "unavailable" | null;
 }
 
 export interface ChapterView extends ChapterWire {

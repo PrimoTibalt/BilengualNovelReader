@@ -22,8 +22,11 @@ namespace NovelReader.Retrievers
               })
           .ConfigurePrimaryHttpMessageHandler(() => {
               if (proxyOptions is null) {
+              // Redirects are not followed: the site's random redirect to another site is a
+              // chapter to ask for again, not a page to scrape (D49).
               return new HttpClientHandler {
-              UseProxy = false
+              UseProxy = false,
+              AllowAutoRedirect = false
               };
               }
               WebProxy proxyServer = new(proxyOptions.Url) {
@@ -32,6 +35,7 @@ namespace NovelReader.Retrievers
               HttpClientHandler handlerWithProxy = new() {
               Proxy = proxyServer,
               UseProxy = true,
+              AllowAutoRedirect = false
               };
               return handlerWithProxy;
               }

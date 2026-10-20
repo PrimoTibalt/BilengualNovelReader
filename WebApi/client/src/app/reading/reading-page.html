@@ -66,7 +66,13 @@
 
 <!-- While a chapter is on its way: at the bottom, where the reader is waiting for it (D48). -->
 @if (chapterInFlight(); as chapterNumber) {
-	<p class="chapter-loading" role="status">loading chapter {{ chapterNumber }}<app-progress-dots /></p>
+	<p class="chapter-status chapter-status--loading" role="status">loading chapter {{ chapterNumber }}<app-progress-dots /></p>
+} @else if (chapterUnavailable(); as chapterNumber) {
+	<!-- The site did not serve it, even after the server retried; scrolling on asks again too (D49). -->
+	<p class="chapter-status" role="status">chapter {{ chapterNumber }} did not load ·
+		<button type="button" class="chapter-status__retry" (click)="retryChapter()">{{ isTouch ? "retry" : "r retry" }}</button></p>
+} @else if (noChapterYet(); as chapterNumber) {
+	<p class="chapter-status" role="status">no chapter {{ chapterNumber }} yet</p>
 }
 
 <app-definition-box />

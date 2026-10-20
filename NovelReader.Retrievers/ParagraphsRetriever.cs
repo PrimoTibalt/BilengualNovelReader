@@ -1,4 +1,5 @@
-﻿using HtmlAgilityPack;
+﻿using System.Net;
+using HtmlAgilityPack;
 using NovelReader.Domain.RealTimeReader.Parsing;
 
 namespace NovelReader.Retrievers
@@ -22,18 +23,52 @@ namespace NovelReader.Retrievers
 		/// </summary>
 		private const int MaximumPlaceholderParagraphs = 3;
 
+		/// <summary>
+		/// The title of the page the site answers, with 200, for a chapter it does not have. Its
+		/// body is the "page moved" notice below, which D21 took for a notice about moved pages.
+		/// </summary>
+		private const string NotFoundTitle = "Chapter Not Found";
+
+		/// <summary>
+		/// What the site served. A chapter it does not have is a <see cref="ChapterNotFoundException"/>,
+		/// a page that is merely not the chapter this time a <see cref="ChapterUnavailableException"/> (D49).
+		/// </summary>
 		public async Task<Dictionary<int, string>> GetParagraphsAsync(string uriPath)
 		{
 			HttpClient httpClient = httpClientFactory.CreateClient("NovelFire");
-			HttpResponseMessage response = await httpClient.GetAsync(uriPath);
-			response.EnsureSuccessStatusCode();
+			using HttpResponseMessage response = await httpClient.GetAsync(uriPath);
+
+			// About one request in six is sent to another site's "Loading..." page, at random:
+			// measured on chapter 52, the next request got the chapter. The client does not follow
+			// redirects, so this is seen for what it is rather than as a page with no paragraphs.
+			if ((int)response.StatusCode is >= 300 and < 400)
+			{
+				throw new ChapterUnavailableException(
+					$"'{uriPath}' was redirected to {response.Headers.Location?.Host ?? "elsewhere"}.");
+			}
+
+			if (response.StatusCode == HttpStatusCode.NotFound)
+			{
+				throw new ChapterNotFoundException($"'{uriPath}' does not exist.");
+			}
+
+			if (!response.IsSuccessStatusCode)
+			{
+				throw new ChapterUnavailableException($"'{uriPath}' answered {(int)response.StatusCode}.");
+			}
 
 			HtmlDocument doc = new();
 			doc.Load(await response.Content.ReadAsStreamAsync());
+			string? title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText;
+			if (title is not null && title.Contains(NotFoundTitle, StringComparison.OrdinalIgnoreCase))
+			{
+				throw new ChapterNotFoundException($"'{uriPath}' is the site's \"chapter not found\" page.");
+			}
+
 			HtmlNodeCollection? paragraphNodes = doc.DocumentNode.SelectNodes("//div[@id='content']/p");
 			if (paragraphNodes is null)
 			{
-				throw new InvalidOperationException($"No paragraphs found at '{uriPath}'. The page markup may have changed.");
+				throw new ChapterUnavailableException($"No paragraphs found at '{uriPath}'. The page markup may have changed.");
 			}
 
 			Dictionary<int, string> result = new(paragraphNodes.Count);
@@ -47,7 +82,7 @@ namespace NovelReader.Retrievers
 			{
 				// Thrown rather than returned so nothing caches it: the caller only stores a
 				// chapter once the scrape succeeds.
-				throw new InvalidOperationException(
+				throw new ChapterNotFoundException(
 					$"'{uriPath}' is the site's \"page moved\" notice, not a chapter.");
 			}
 
