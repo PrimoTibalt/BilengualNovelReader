@@ -1785,3 +1785,55 @@ One recall ("a lamp you carry with a candle inside" for *lantern*) was right at 
 would go to the AI. That is the torn case the cut-off is for.
 
 **Not done.** The 0.6 cut-off is set from those 12 answers; tune it on real readers' answers.
+
+## D47 — Jev picks the sense in context and checks scraped chapters
+
+**Status:** Adopted · 2026-10-19
+
+**Context.** After D46, two more places in the app make a pick-one decision about text with
+nothing smarter than a fixed rule. A reader without their own AI gets the dictionary's senses
+in the dictionary's order, so *saw* in "she saw him leave" opens on the tool. And a scraped
+page is recognised as junk only when it is the one notice whose wording we know (D21).
+
+**Decision.**
+- **One `JevClient`** in `NovelReader.Dictionary`, shared by the three Jev services. It handles
+  the HTTP call, logging and reading the reply. `AddJev` replaces `AddJevAnswerJudge` and
+  registers nothing without `JEV_ACCESS_KEY`.
+- **Sense in context (`ISenseChooser`, `JevSenseChooser`).** One `choice` question per lookup.
+  The options are the senses' numbers ("(noun) text", each cut at 300 characters) plus `none`,
+  so that an unlisted meaning is not forced onto a wrong one. The paragraph is capped at 2000
+  characters as for the AI. A pick under 0.5 keeps the dictionary's order.
+  `AssistedDefinitionService` moves the pick to the front, after the cache and only for this
+  request: the order depends on the paragraph, so it is never stored.
+- **Keep every sense, show twelve.** The first live test failed because the right sense was not
+  offered. Wiktionary lists entry after entry, and the old cap of 12 kept only the first: all
+  12 of *bank* were about money (the river is 16th of 42), and *saw*, *rose*, *left* and *felt*
+  never reached their past-tense senses. The providers now keep up to 64 senses and the box is
+  cut to 12 after ranking. Cached definitions carry `format: 2`, and an older entry is fetched
+  again on its next lookup. Side effect: `WordForms.BaseFromDictionary` (D39) now also sees the
+  late "simple past of …" notes, so a saved *left* (main sense an adjective) gets the base
+  *leave*.
+- **The page always sends the paragraph with a definition request.** Translations still send
+  it only for AI readers, because MyMemory does not use it.
+- **Chapter check (`IChapterTextCheck`, `JevChapterTextCheck`).** One yes/no question on the
+  first 20 paragraphs (at most 4000 characters) of each fresh scrape, asked in
+  `ChapterPreparationService` before the chapter is stored. A page is refused only when the
+  probability it is a chapter is under 0.2, by the same exception as the "page moved" notice,
+  so nothing is cached and the next load scrapes again. A failed or unsure check lets the page
+  through: refusing a real chapter costs the reader the chapter, while caching junk costs a
+  cleanup. The wording check of D21 stays in front of it.
+
+**Verified.** 14 new unit tests cover the client's reading of choices and yes/no answers, each
+service's thresholds, the reordering and the cut to twelve, and a refused page that is not
+stored and is scraped again. All 321 pass. Against the live API, the sense was picked right
+for 13 of 13 words with all senses offered: *saw* (see, and the tool), *bank* (river, and
+money), *bolt*, *cultivation*, *grave*, *rose*, *left* twice, *felt* and *spring* twice. One
+right pick scored 0.58 and the rest 0.61 or more, at about 360 ms and 500–1600 input tokens
+each (under $0.0001). Five site pages (the moved notice, a browser check, a paywall, a 404,
+"Loading...") scored 0.04 or less as chapters. Three real ones, including an author's
+announcement and a four-line chapter, scored 0.83 or more. Through the real DI wiring and
+Wiktionary, *bank*, *saw* and *spring* opened on the sense the paragraph used.
+
+**Not done.** The definition box does not say that the order was chosen. Each lookup without an
+AI now waits about 350 ms more for the pick, which a cache keyed by (term, paragraph) could save
+on a re-read. The thresholds come from hand-made cases, not real pages.

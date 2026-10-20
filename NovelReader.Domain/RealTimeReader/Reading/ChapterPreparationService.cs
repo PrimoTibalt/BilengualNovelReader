@@ -5,12 +5,14 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 {
     /// <summary>
     /// Turns a chapter into reader-ready markup: fetch the raw paragraphs (scraping on a
-    /// cache miss), then wrap every word this reader has saved.
+    /// cache miss), then wrap every word this reader has saved. A scraped page is put to the
+    /// <c>chapterCheck</c>, when there is one, before it is stored (D47).
     /// </summary>
     public class ChapterPreparationService(
         INovelRepository novelRepository,
         IParagraphsRetriever paragraphsRetriever,
-        IVocabularyRepository vocabularyRepository
+        IVocabularyRepository vocabularyRepository,
+        IChapterTextCheck? chapterCheck = null
     )
     {
         public async Task<PreparedChapter> PrepareAsync(
@@ -80,10 +82,23 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 
             // The scrape only happens when the chapter is genuinely not stored yet.
             Lazy<Task<Dictionary<int, string>>> paragraphsLazy = new(() =>
-                paragraphsRetriever.GetParagraphsAsync($"/book/{novelName}/chapter-{chapterNumber}")
+                ScrapeAsync($"/book/{novelName}/chapter-{chapterNumber}")
             );
 
             return await chaptersCollection.InsertOneAsync(chapterNumber, paragraphsLazy);
+        }
+
+        private async Task<Dictionary<int, string>> ScrapeAsync(string uriPath)
+        {
+            Dictionary<int, string> paragraphs = await paragraphsRetriever.GetParagraphsAsync(uriPath);
+            if (chapterCheck is not null && await chapterCheck.IsSitePageAsync(paragraphs))
+            {
+                // Thrown, like the "page moved" notice (D21), so that nothing caches it; the next
+                // load scrapes again, by which time the site may be serving the chapter.
+                throw new InvalidOperationException($"'{uriPath}' is a page of the site's, not a chapter.");
+            }
+
+            return paragraphs;
         }
     }
 }

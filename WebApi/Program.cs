@@ -35,7 +35,7 @@ namespace NovelReader
 
 			builder.Services.RegisterHttpClientAndRetriever(builder.Configuration);
 			builder.Services.RegisterDictionaryProviders();
-			builder.Services.AddJevAnswerJudge(builder.Configuration["JEV_ACCESS_KEY"]);
+			builder.Services.AddJev(builder.Configuration["JEV_ACCESS_KEY"]);
 			builder.Services.AddMongoClient(builder.Configuration);
 			builder.Services.RegisterMongoImplementations();
 			builder.Services.AddSqliteAccounts(builder.Configuration);

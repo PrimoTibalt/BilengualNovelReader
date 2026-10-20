@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Review;
 using NovelReader.Domain.RealTimeReader.Definitions;
+using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.Translation;
 
 namespace NovelReader.Dictionary
@@ -103,17 +104,18 @@ namespace NovelReader.Dictionary
 		}
 
 		/// <summary>
-		/// The review's quick judge (D46), when the app has a Jev key. Without one nothing is
-		/// registered and the reader's AI judges every answer, as before.
+		/// Jev's quick decisions, when the app has a key: the review's judge (D46), the sense a
+		/// word has in its paragraph and the check on a scraped chapter (D47). Without a key
+		/// nothing is registered and each of those does what it did before.
 		/// </summary>
-		public static void AddJevAnswerJudge(this IServiceCollection services, string? accessKey)
+		public static void AddJev(this IServiceCollection services, string? accessKey)
 		{
 			if (string.IsNullOrWhiteSpace(accessKey))
 			{
 				return;
 			}
 
-			services.AddHttpClient(JevAnswerJudge.HttpClientName, client =>
+			services.AddHttpClient(JevClient.HttpClientName, client =>
 			{
 				client.BaseAddress = new Uri("https://api.typesafe.ai/");
 				client.Timeout = JevTimeout;
@@ -122,7 +124,10 @@ namespace NovelReader.Dictionary
 				client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
 			});
 
+			services.AddSingleton<JevClient>();
 			services.AddSingleton<IAnswerJudge, JevAnswerJudge>();
+			services.AddSingleton<ISenseChooser, JevSenseChooser>();
+			services.AddSingleton<IChapterTextCheck, JevChapterTextCheck>();
 		}
 	}
 }

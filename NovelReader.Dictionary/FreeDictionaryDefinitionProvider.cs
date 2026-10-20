@@ -13,7 +13,8 @@ namespace NovelReader.Dictionary
 	{
 		internal const string HttpClientName = "FreeDictionary";
 
-		private const int MaxSenses = 12;
+		/// <summary>As for Wiktionary: kept whole for choosing the sense in context, cut to a dozen for showing (D47).</summary>
+		private const int MaxSenses = 64;
 
 		public string Name => "Free Dictionary";
 

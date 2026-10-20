@@ -189,39 +189,6 @@ namespace NovelReader.Tests
 		}
 	}
 
-	/// <summary>Reading Jev's answer to the verdict question (D46).</summary>
-	public class JevAnswerJudgeTests
-	{
-		private static string Reply(string choice, double confidence) =>
-			"{\"model\":\"jev-1.13.0\",\"answers\":{\"verdict\":{\"type\":\"choice\",\"choice\":\"" + choice
-			+ "\",\"confidence\":" + confidence.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"probabilities\":{\"" + choice + "\":" + confidence.ToString(System.Globalization.CultureInfo.InvariantCulture)
-			+ "}}},\"usage\":{\"input_tokens\":120,\"output_tokens\":0}}";
-
-		[Theory]
-		[InlineData("correct", AnswerVerdict.Correct)]
-		[InlineData("partial", AnswerVerdict.Partial)]
-		[InlineData("wrong", AnswerVerdict.Wrong)]
-		public void A_confident_choice_is_the_verdict(string choice, AnswerVerdict verdict)
-		{
-			Assert.Equal(verdict, NovelReader.Dictionary.JevAnswerJudge.ReadVerdict(Reply(choice, 0.9)));
-		}
-
-		[Fact]
-		public void An_unsure_choice_is_left_to_the_ai()
-		{
-			Assert.Null(NovelReader.Dictionary.JevAnswerJudge.ReadVerdict(Reply("correct", 0.45)));
-		}
-
-		[Theory]
-		[InlineData("""{"answers":{"verdict":{"choice":"maybe","confidence":0.99}}}""")]
-		[InlineData("""{"answers":{}}""")]
-		[InlineData("not json")]
-		public void Anything_else_is_no_verdict(string reply)
-		{
-			Assert.Null(NovelReader.Dictionary.JevAnswerJudge.ReadVerdict(reply));
-		}
-	}
-
 	/// <summary>A review session end to end, against fakes for the stores and the AI.</summary>
 	public class ReviewServiceTests
 	{

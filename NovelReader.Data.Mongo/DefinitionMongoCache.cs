@@ -16,6 +16,12 @@ namespace NovelReader.Data.Mongo
 
 		private static readonly TimeSpan NegativeCacheLifetime = TimeSpan.FromDays(7);
 
+		/// <summary>
+		/// Bumped when what a stored entry holds changes. 2: senses are no longer cut at twelve
+		/// (D47). An entry stored before that, with no format, is fetched again on its next lookup.
+		/// </summary>
+		internal const int Format = 2;
+
 		private IMongoCollection<BsonDocument> Collection =>
 			mongoClient.GetDatabase(DatabaseName).GetCollection<BsonDocument>(CollectionName);
 
@@ -40,6 +46,11 @@ namespace NovelReader.Data.Mongo
 
 				bool stillTrusted = DateTime.UtcNow - recordedAt < NegativeCacheLifetime;
 				return stillTrusted ? DefinitionLookupResult.Missing : DefinitionLookupResult.Unknown;
+			}
+
+			if (document.GetValue("format", 1).ToInt32() < Format)
+			{
+				return DefinitionLookupResult.Unknown;
 			}
 
 			WordDefinition? definition = ToDefinition(normalizedTerm, document);
@@ -69,6 +80,7 @@ namespace NovelReader.Data.Mongo
 			{
 				{ "_id", definition.Term },
 				{ "missing", false },
+				{ "format", Format },
 				{ "source", definition.SourceName },
 				{ "senses", senses },
 				{ "fetchedAt", DateTime.UtcNow }

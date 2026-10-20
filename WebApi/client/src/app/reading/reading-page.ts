@@ -367,7 +367,7 @@ export class ReadingPage implements AfterViewInit {
     return paragraph.textContent?.trim().replace(/\s+/g, " ") || null;
   }
 
-  /** The paragraph, but only when somebody is going to read it. */
+  /** The paragraph for a translation, but only when the reader's AI is going to read it. */
   #contextToSend(): string | null {
     return this.#state.assistantEnabled() ? this.#boxParagraph : null;
   }
@@ -392,7 +392,7 @@ export class ReadingPage implements AfterViewInit {
     clearSelection();
     if (!this.#router.has("definition")) this.#router.push(this.#definitionMode);
 
-    this.#connection.requestDefinition(term, this.#contextToSend());
+    this.#connection.requestDefinition(term, this.#boxParagraph);
   }
 
   /**

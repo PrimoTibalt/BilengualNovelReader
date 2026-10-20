@@ -211,8 +211,8 @@ namespace NovelReader
 		/// Looks a selection up. Always answers — a word with no definition comes back with
 		/// Found = false rather than silence, so the box can say so.
 		///
-		/// <paramref name="paragraph"/> is the text the selection was made in. The page sends it
-		/// only when the reader has an AI set up, which reads the word against it (D35).
+		/// <paramref name="paragraph"/> is the text the selection was made in. The reader's AI reads
+		/// the word against it (D35); without one, it picks the dictionary sense shown first (D47).
 		/// </summary>
 		public async Task GetDefinition(string surfaceForm, string? paragraph)
 		{

@@ -303,6 +303,22 @@ The **server decides everything**; the page shows exercises and sends back what 
 - Cards: Mongo `Users.ReviewCards`, one per (user, term), unique index. A card is created
   lazily for each saved word and removed when its word is gone from the vocabulary.
 
+### Jev, the quick decisions (D46, D47)
+
+`AddJev(JEV_ACCESS_KEY)` registers three small Jev-backed services behind one `JevClient`
+(`NovelReader.Dictionary`); without the key none is registered and each caller does what it
+did before. Each is a domain interface with an optional constructor parameter, and each answers
+null/false when unsure or unreachable — **Jev never blocks anything**.
+
+- `IAnswerJudge` — the review's verdicts (above).
+- `ISenseChooser` — which dictionary sense a word has in its paragraph. `AssistedDefinitionService`
+  moves it to the front, then cuts to `MaximumShownSenses` (12). The providers keep up to 64
+  senses for this: Wiktionary lists entry after entry, so the right sense is often late (*bank*
+  by a river is the 16th of 42). The page therefore **always sends the paragraph with a
+  definition request** (translations still only for AI readers). The definition cache stores
+  the dictionary's order and carries a `format` (2); an older entry is fetched again.
+- `IChapterTextCheck` — see the `ParagraphsRetriever` note under prototype seams.
+
 ### Saved words match in all their forms (D39)
 
 `VocabularyEntry.BaseForm` comes from the dictionary at save time (`WordForms.BaseFromDictionary`):
@@ -354,8 +370,9 @@ the limit against parallel guesses.
 failure; it wants a retry with backoff, and a way to tell a transient apart from the actual end
 of a novel. It also recognises the site's "page moved" notice **by its wording** and throws
 rather than letting it be cached as a two-paragraph chapter (D21) — if the site rewords that
-notice, the junk-chapter behaviour comes back and `ParagraphsRetrieverTests` needs updating
-with it.
+notice, `ParagraphsRetrieverTests` needs updating with it. Behind that, when Jev is configured,
+`ChapterPreparationService` asks `IChapterTextCheck` about every fresh scrape and refuses a
+page that is confidently a site page (notice, error, paywall, browser check) the same way (D47).
 
 The chapter menu lists only a window around the current chapter, but any number can be typed
 into its filter to jump straight there (`MenuScreen.itemsFromFilter`).

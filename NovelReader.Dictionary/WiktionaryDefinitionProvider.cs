@@ -13,8 +13,13 @@ namespace NovelReader.Dictionary
 	{
 		internal const string HttpClientName = "Wiktionary";
 
-		/// <summary>Enough senses to be useful without turning the box into a wall of text.</summary>
-		private const int MaxSenses = 12;
+		/// <summary>
+		/// Every sense a word is likely to need. The box shows only the first dozen
+		/// (<c>AssistedDefinitionService.MaximumShownSenses</c>), but the sense a paragraph uses is
+		/// chosen from all of these first (D47): Wiktionary lists one entry after another, so the
+		/// first twelve of *bank* are all money and *saw* never reaches "simple past of see".
+		/// </summary>
+		private const int MaxSenses = 64;
 
 		public string Name => "Wiktionary";
 

@@ -170,8 +170,8 @@ export class ReaderConnection {
   }
 
   /**
-   * `paragraph` is the text the selection was made in, sent only while the reader has an AI
-   * set up — it reads the word against it (D35). Null otherwise; the dictionaries need none.
+   * `paragraph` is the text the selection was made in. The reader's AI reads the word against
+   * it (D35); without one, the server picks the dictionary sense it uses (D47).
    */
   requestDefinition(surfaceForm: string, paragraph: string | null): void {
     void this.#send("GetDefinition", surfaceForm, paragraph);
@@ -188,7 +188,8 @@ export class ReaderConnection {
   /**
    * Asks for a translation. `settings` is passed only on the very first one a reader ever
    * requests, which is sent alongside the save that stores them — every later call leaves it
-   * out and the server uses what it stored (D31). `paragraph` is as for a definition.
+   * out and the server uses what it stored (D31). `paragraph` is sent only while the reader has an AI;
+   * MyMemory translates the selection alone.
    */
   requestTranslation(
     surfaceForm: string,
