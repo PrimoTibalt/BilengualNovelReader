@@ -7,13 +7,15 @@
 	The settings drawer's way in, top-left — the mirror of the navigation hint top-right. On a
 	keyboard it is drawn exactly like that hint, `c settings`, and is decorative: the key does the
 	work. On touch it becomes a button showing `>` while the drawer is shut and `<` while it is
-	open (D35, D36).
+	open (D35, D36). It goes while the navigation panel is open, which on a phone is as wide as
+	the screen and would have its title under this button.
 -->
 <button id="settings-affordance" class="settings-affordance" type="button"
 	aria-controls="settings-panel"
 	[attr.aria-expanded]="settingsPanel().isOpen()"
 	[attr.aria-label]="settingsPanel().isOpen() ? 'Close settings' : 'Open settings'"
 	[attr.aria-hidden]="isTouch ? null : 'true'" [attr.tabindex]="isTouch ? null : -1"
+	[hidden]="navigationMenu().isOpen()"
 	(click)="settingsPanel().toggle()">
 	<span class="settings-affordance__glyph" aria-hidden="true">{{ settingsPanel().isOpen() ? "<" : ">" }}</span>
 	<span class="settings-affordance__key" aria-hidden="true">c</span>

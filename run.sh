@@ -9,7 +9,9 @@
 #
 # Does the two things `dotnet build` does not cover (see CLAUDE.md):
 #   1. runs MongoDB in a rootless podman container matching appsettings.json
-#   2. builds + runs the app (the csproj builds the Angular client itself)
+#   2. builds + runs the app (the csproj builds the Angular client itself), pointed at that
+#      container even when user secrets name another database. To run against another one,
+#      export ConnectionStrings__DefaultConnectionString yourself.
 #
 set -euo pipefail
 
@@ -110,6 +112,16 @@ done
 # -------------------------------------------------------------------------- run
 URL_HINT="http://0.0.0.0:5261/ReadingPage"
 [ "$LAUNCH_PROFILE" = "https" ] && URL_HINT="https://0.0.0.0:7178/ReadingPage"
+
+# The app reads user secrets in Development, and a connection string there (Atlas, say) would
+# otherwise win over appsettings.json: a local run would read and write that database instead of
+# the container started above. An environment variable outranks user secrets; one the caller set
+# is kept.
+if [ -n "${ConnectionStrings__DefaultConnectionString:-}" ]; then
+  warn "Using the ConnectionStrings__DefaultConnectionString from your environment, not the container"
+else
+  export ConnectionStrings__DefaultConnectionString="mongodb://${MONGO_USER}:${MONGO_PASSWORD}@127.0.0.1:${MONGO_PORT}/?directConnection=true&serverSelectionTimeoutMS=2000"
+fi
 
 log "Starting the app ($LAUNCH_PROFILE profile) -> $URL_HINT"
 log "Mongo keeps running after Ctrl-C; './run.sh --stop' shuts it down."

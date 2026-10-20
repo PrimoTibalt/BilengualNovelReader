@@ -15,7 +15,9 @@ dotnet run --project WebApi --launch-profile https   # https://localhost:7178
 ```
 
 `run.sh` is the one-command path: it handles the prerequisites below (podman Mongo and the
-build) and then runs the app in the foreground. The
+build) and then runs the app in the foreground, pointed at that container through
+`ConnectionStrings__DefaultConnectionString` — which outranks user secrets, so a connection
+string kept there (Atlas) is not used by a local run. Export the variable yourself to override. The
 Mongo container is left running after Ctrl-C so cached chapters survive a restart.
 
 The Angular client (`WebApi/client`) is built by `dotnet build` (the `BuildClient` target in `WebApi/NovelReader.csproj` runs `npm ci` and `ng build` into `WebApi/wwwroot`), so it needs no separate step. To iterate on the frontend alone, from `WebApi/client/`:
