@@ -7,13 +7,26 @@ namespace NovelReader.Retrievers
 {
     public static class ServiceCollectionExtension
     {
+        /// <summary>The named client for the site chapters and search come from.</summary>
+        internal const string NovelSourceClient = "NovelSource";
+
+        /// <summary>
+        /// novelfire.net, until it began redirecting every chapter, by way of a "Loading..."
+        /// page on readnovel.site, to this same site under a new name. The markup, the
+        /// not-found page and the search endpoint are unchanged; only the chapter path went
+        /// from <c>book/</c> to <c>novel/</c>. <c>NovelSource:BaseAddress</c> overrides it, so
+        /// the next move is a setting.
+        /// </summary>
+        private const string DefaultBaseAddress = "https://novelphoenix.com/";
+
         public static void RegisterHttpClientAndRetriever(this IServiceCollection services, IConfiguration config)
         {
           ProxyOptions? proxyOptions = config.GetSection("ProxyOptions").Get<ProxyOptions>();
-          services.AddHttpClient("NovelFire", 
+          string baseAddress = config["NovelSource:BaseAddress"] ?? DefaultBaseAddress;
+          services.AddHttpClient(NovelSourceClient, 
               client =>
               {
-              client.BaseAddress = new Uri("https://novelfire.net/");
+              client.BaseAddress = new Uri(baseAddress);
               client.DefaultRequestHeaders.UserAgent.Clear();
               client.DefaultRequestHeaders.TryAddWithoutValidation(
                   "User-Agent",

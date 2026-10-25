@@ -89,7 +89,7 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 
             // The scrape only happens when the chapter is genuinely not stored yet.
             Lazy<Task<Dictionary<int, string>>> paragraphsLazy = new(() =>
-                ScrapeAsync($"/book/{novelName}/chapter-{chapterNumber}")
+                ScrapeAsync($"/novel/{novelName}/chapter-{chapterNumber}")
             );
 
             return await chaptersCollection.InsertOneAsync(chapterNumber, paragraphsLazy);

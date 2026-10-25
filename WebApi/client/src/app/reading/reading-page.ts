@@ -880,7 +880,7 @@ export class ReadingPage implements AfterViewInit {
         },
         {
           label: "Search new novels",
-          detail: "novelfire",
+          detail: "novelphoenix",
           run: () => menu.push(this.#searchScreen()),
         },
         {

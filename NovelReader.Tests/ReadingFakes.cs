@@ -85,7 +85,7 @@ namespace NovelReader.Tests
 
 		/// <summary>
 		/// Scrapes of one chapter, matched on the chapter suffix rather than the whole path.
-		/// Whether the path is written "book/…" or "/book/…" is the caller's business and has
+		/// Whether the path is written "novel/…" or "/novel/…" is the caller's business and has
 		/// changed before; how many times a chapter was fetched is what these tests are about.
 		/// </summary>
 		public int CallsForChapter(int chapterNumber)

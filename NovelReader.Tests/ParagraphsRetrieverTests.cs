@@ -28,7 +28,7 @@ namespace NovelReader.Tests
 		{
 			ParagraphsRetriever retriever = Build(Page("Chapter One", "First.", "Second.", "Third."));
 
-			Dictionary<int, string> paragraphs = await retriever.GetParagraphsAsync("book/x/chapter-1");
+			Dictionary<int, string> paragraphs = await retriever.GetParagraphsAsync("novel/x/chapter-1");
 
 			Assert.Equal(4, paragraphs.Count);
 			Assert.Equal("Chapter One", paragraphs[1]);
@@ -44,7 +44,7 @@ namespace NovelReader.Tests
 				"Please use the search function for the content you want to access or go to home page and start exploring the novels."));
 
 			ChapterNotFoundException thrown = await Assert.ThrowsAsync<ChapterNotFoundException>(
-				() => retriever.GetParagraphsAsync("book/x/chapter-999999"));
+				() => retriever.GetParagraphsAsync("novel/x/chapter-999999"));
 
 			Assert.Contains("not a chapter", thrown.Message);
 		}
@@ -55,7 +55,7 @@ namespace NovelReader.Tests
 			ParagraphsRetriever retriever = Build(Page("SOME NOVEL PAGES MOVED FOR BETTER USER EXPERIENCE."));
 
 			await Assert.ThrowsAsync<ChapterNotFoundException>(
-				() => retriever.GetParagraphsAsync("book/x/chapter-1"));
+				() => retriever.GetParagraphsAsync("novel/x/chapter-1"));
 		}
 
 		[Fact]
@@ -64,7 +64,7 @@ namespace NovelReader.Tests
 			// Two paragraphs and no marker phrase: short, but real.
 			ParagraphsRetriever retriever = Build(Page("Chapter Twelve", "It ended there."));
 
-			Dictionary<int, string> paragraphs = await retriever.GetParagraphsAsync("book/x/chapter-12");
+			Dictionary<int, string> paragraphs = await retriever.GetParagraphsAsync("novel/x/chapter-12");
 
 			Assert.Equal(2, paragraphs.Count);
 		}
@@ -79,7 +79,7 @@ namespace NovelReader.Tests
 				"Third.",
 				"Fourth."));
 
-			Dictionary<int, string> paragraphs = await retriever.GetParagraphsAsync("book/x/chapter-9");
+			Dictionary<int, string> paragraphs = await retriever.GetParagraphsAsync("novel/x/chapter-9");
 
 			Assert.Equal(4, paragraphs.Count);
 		}
@@ -90,7 +90,7 @@ namespace NovelReader.Tests
 			ParagraphsRetriever retriever = Build("<html><body><p>elsewhere</p></body></html>");
 
 			ChapterUnavailableException thrown = await Assert.ThrowsAsync<ChapterUnavailableException>(
-				() => retriever.GetParagraphsAsync("book/x/chapter-1"));
+				() => retriever.GetParagraphsAsync("novel/x/chapter-1"));
 
 			Assert.Contains("No paragraphs found", thrown.Message);
 		}
@@ -106,7 +106,7 @@ namespace NovelReader.Tests
 			ParagraphsRetriever retriever = Build(Page("nope"), status);
 
 			await Assert.ThrowsAsync<ChapterUnavailableException>(
-				() => retriever.GetParagraphsAsync("book/x/chapter-52"));
+				() => retriever.GetParagraphsAsync("novel/x/chapter-52"));
 		}
 
 		[Fact]
@@ -118,7 +118,7 @@ namespace NovelReader.Tests
 				+ "<p>Novel Chapters</p><p>Latest Novels</p><p>Completed Novels</p><p>Ranking</p></div></body></html>");
 
 			await Assert.ThrowsAsync<ChapterNotFoundException>(
-				() => retriever.GetParagraphsAsync("book/x/chapter-2335"));
+				() => retriever.GetParagraphsAsync("novel/x/chapter-2335"));
 		}
 
 		[Fact]
@@ -127,7 +127,7 @@ namespace NovelReader.Tests
 			ParagraphsRetriever retriever = Build("", HttpStatusCode.NotFound);
 
 			await Assert.ThrowsAsync<ChapterNotFoundException>(
-				() => retriever.GetParagraphsAsync("book/x/chapter-2335"));
+				() => retriever.GetParagraphsAsync("novel/x/chapter-2335"));
 		}
 	}
 }

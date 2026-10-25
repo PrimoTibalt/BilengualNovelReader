@@ -58,7 +58,7 @@ Tests: `dotnet test NovelReader.Tests` (xunit). No lint/format config.
 Five projects; dependencies point inward toward `NovelReader.Domain`, which has **zero package references** and holds only interfaces, POCOs and pure logic (password hashing lives there because PBKDF2 is BCL, not NuGet).
 
 - `NovelReader.Domain` — interfaces (`INovelRepository`, `ICollectionOfChapters`, `IFilteredCollection`, `IChapter`, `IParagraphsRetriever`, `IUserDataHandler`), plus `NextParagraphProcessor`, the single piece of business logic.
-- `NovelReader.Retrievers` — `ParagraphsRetriever` scrapes chapter paragraphs from novelfire.net (`//div[@id='content']/p`) with HtmlAgilityPack over a named `HttpClient` ("NovelFire", browser User-Agent).
+- `NovelReader.Retrievers` — `ParagraphsRetriever` scrapes chapter paragraphs from novelphoenix.com (formerly novelfire.net; `NovelSource:BaseAddress` overrides it) (`//div[@id='content']/p`) with HtmlAgilityPack over a named `HttpClient` ("NovelSource", browser User-Agent).
 - `NovelReader.Data.Mongo` — MongoDB implementations. **All classes here are `internal`**; the only public surface is `ServiceCollectionExtension`.
 - `NovelReader.Data.Sqlite` — user accounts in a local SQLite file, same convention: everything `internal` bar `ServiceCollectionExtension`, with `InternalsVisibleTo` for the tests.
 - `WebApi` (project/assembly name `NovelReader`, root namespace `NovelReader`) — ASP.NET Core host, SignalR hub, static frontend.
@@ -165,7 +165,7 @@ still pushed, because they are notifications.
 actually had on screen. The page sends it once the reader has been still for two seconds, not
 on every scroll event.
 
-Chapter URLs are built as `book/{novelName}/chapter-{chapterNumber}` against the NovelFire base address, so `novelName` is the site's slug (e.g. `reverend-insanity`).
+Chapter URLs are built as `novel/{novelName}/chapter-{chapterNumber}` against the source's base address, so `novelName` is the site's slug (e.g. `reverend-insanity`).
 
 **Two rules keep this path from stampeding the source site (D17).** `ProcessAndReturnAsync` takes a `UserRequestGate` turn, so one reader is served one request at a time. And `SchedulePrefetch` claims a user/novel/chapter key *before* scheduling: every paragraph served asks for the next chapter to be warmed, so without that claim a 30-paragraph chapter queued 30 identical scrapes. The cache checks inside the prefetch cannot do that job — they all run before any of them writes. Prefetch must never take the gate; delaying the reader is exactly what D11 forbids.
 
@@ -376,7 +376,7 @@ the limit against parallel guesses.
 a 404, the 200 page titled "Page Chapter Not Found", or D21's "page moved" notice, which is that
 page's body) from **one it did not serve this time** (`ChapterUnavailableException`: the site's
 random 302 to another site — about one request in six — an error status, a page with no
-content div) (D49). The NovelFire client does **not follow redirects**, which is what makes the
+content div) (D49). The source's client does **not follow redirects**, which is what makes the
 302 visible. `ChapterPreparationService` retries unavailable chapters after 1 s and 3 s
 (`RetryDelays`), never not-found ones; the hub then answers `failure: "unavailable"`, which the
 page shows as `chapter N did not load · retry` instead of taking it for the end of the novel.

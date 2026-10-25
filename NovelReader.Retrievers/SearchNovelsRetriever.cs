@@ -31,7 +31,7 @@ namespace NovelReader.Retrievers
 
         public async Task<IReadOnlyCollection<NovelDataDto>> GetNovelsAsync(string uriPath)
         {
-            HttpClient httpClient = httpClientFactory.CreateClient("NovelFire");
+            HttpClient httpClient = httpClientFactory.CreateClient(ServiceCollectionExtension.NovelSourceClient);
             HttpResponseMessage response = await httpClient.GetAsync(uriPath);
             response.EnsureSuccessStatusCode();
 

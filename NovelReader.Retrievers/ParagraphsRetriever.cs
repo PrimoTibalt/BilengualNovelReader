@@ -35,12 +35,12 @@ namespace NovelReader.Retrievers
 		/// </summary>
 		public async Task<Dictionary<int, string>> GetParagraphsAsync(string uriPath)
 		{
-			HttpClient httpClient = httpClientFactory.CreateClient("NovelFire");
+			HttpClient httpClient = httpClientFactory.CreateClient(ServiceCollectionExtension.NovelSourceClient);
 			using HttpResponseMessage response = await httpClient.GetAsync(uriPath);
 
-			// About one request in six is sent to another site's "Loading..." page, at random:
-			// measured on chapter 52, the next request got the chapter. The client does not follow
-			// redirects, so this is seen for what it is rather than as a page with no paragraphs.
+			// novelfire.net sent about one request in six to another site's "Loading..." page, and
+			// in the end every one (see the base address). The client does not follow redirects,
+			// so this is seen for what it is rather than as a page with no paragraphs.
 			if ((int)response.StatusCode is >= 300 and < 400)
 			{
 				throw new ChapterUnavailableException(
