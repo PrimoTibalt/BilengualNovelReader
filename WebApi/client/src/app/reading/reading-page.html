@@ -73,6 +73,9 @@
 	<!-- The site did not serve it, even after the server retried; scrolling on asks again too (D49). -->
 	<p class="chapter-status" role="status">chapter {{ chapterNumber }} did not load ·
 		<button type="button" class="chapter-status__retry" (click)="retryChapter()">{{ isTouch ? "retry" : "r retry" }}</button></p>
+} @else if (chapterNotDownloaded(); as chapterNumber) {
+	<!-- Offline, past what was downloaded: it loads by itself once the connection is back (D51). -->
+	<p class="chapter-status" role="status">chapter {{ chapterNumber }} is not on this device · it loads when you are online</p>
 } @else if (noChapterYet(); as chapterNumber) {
 	<p class="chapter-status" role="status">no chapter {{ chapterNumber }} yet</p>
 }
@@ -85,6 +88,8 @@
 <app-settings-panel (opened)="onSettingsOpened()" (closed)="onSettingsClosed()">
 	<app-review-section (start)="startReview()" />
 	<app-appearance-section [keepReadingPosition]="keepReadingPosition" />
+	<app-offline-section [novel]="currentNovel()" [novelTitle]="currentNovelTitle()" [chapter]="currentChapter()"
+		[totalChapters]="currentTotalChapters()" />
 	<app-upload-section (uploaded)="onBookUploaded($event)" />
 	<app-assistant-section />
 	<app-password-section />

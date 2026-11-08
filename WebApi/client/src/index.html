@@ -7,6 +7,11 @@
 	     Every asset, the hub and the auth endpoints resolve against it. -->
 	<base href="/" />
 	<title>Novel Reader</title>
+	<!-- Installable as an app, full screen with no address bar, and the Android app's start (D51). -->
+	<link rel="manifest" href="manifest.webmanifest" />
+	<meta name="theme-color" content="#1b1b1b" />
+	<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+	<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 	<!--
 		The reader's appearance, applied before the first paint so a light page never flashes
 		dark first. src/app/settings/appearance.ts owns the format and writes the same key; this

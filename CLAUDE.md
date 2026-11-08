@@ -197,6 +197,32 @@ parsed by `BookUploadService` and dropped. Rate-limited per reader (`AuthRateLim
   standalone small → `--ornament`, inside text → `--inline` (styles in `reader.css`).
 - `GetBookContents(novel)` gives the chapter menu the book's titles.
 
+### Offline reading and the Android app (D51)
+
+The site is an installable app: `client/public/manifest.webmanifest`, and `client/public/sw.js`,
+a hand-written service worker (plain JS, outside the Angular build, registered from
+`core/service-worker.ts` under the app's base). It keeps the reading page's shell (network
+first), the content-hashed build files (cache first; the page posts the list it runs on, and
+other builds' are dropped) and the pictures of downloaded chapters. It never touches the hub,
+`auth/*` or anything but GET.
+
+- **Downloads**: the drawer's `offline-section` (this chapter and the next N, or a list like
+  `5-12, 20`) runs `ChapterDownloads`, one chapter at a time through the hub's `DownloadChapter`
+  — a load that takes the reader's gate (D17) but neither prefetches nor fills the shared memory
+  tier. `OfflineStore` (`core/offline-store.ts`) keeps chapters (the server's markup), novels (a
+  book's contents too) and bookmarks in IndexedDB **per reader**, pictures in Cache Storage.
+- **Reading offline**: the page waits `onlineWaitInMilliseconds` (4 s) for the hub; failing
+  that it opens from the device at the latest local bookmark and finishes the session when the
+  connection arrives. `#fetchChapter` reads the device while disconnected and says
+  `chapter N is not on this device` at once rather than sitting out the 30 s connection wait.
+  Online, a stored chapter is refreshed as it loads. **Every bookmark is kept on the device
+  first** and marked sent once `ReportProgress` answers; unsent ones are sent oldest first on
+  reconnect, before the session is read.
+- **Android**: `android/` is a Trusted Web Activity (Google's `androidbrowserhelper`, no code of
+  ours). Full screen needs `/.well-known/assetlinks.json` (`AssetLinks.cs`, from
+  `TrustedWebActivity` in appsettings) **at the domain root — an nginx location**. See
+  `android/README.md`.
+
 ### Storage layout
 
 - Database `Novels`: **one collection per novel**, named by the novel slug. A chapter document is `{ _id, chapter: <int>, "1": "...", "2": "..." }` — paragraphs are `[BsonExtraElements]` on `Chapter`, keyed by the *stringified* paragraph number, hence `Dictionary<string, object>` and the cast in `TryGetParagraph`. Each collection carries a **unique index on `chapter`** (`chapter_unique`), ensured by `ChapterIndexes` the first time the novel is opened in a process; it also clears out any duplicates an earlier run stored. `TryGetExactlyOne()` keeps its `Single()` deliberately — it asserts the invariant the index guarantees (D17).

@@ -1977,3 +1977,49 @@ column and the drawn dash sat in its line at 111×2.
 **Not done.** No way yet to remove a book. Two readers uploading the same book store it twice.
 A JPEG rotated by its EXIF orientation is laid out at the stored aspect until it loads. A
 table-of-contents entry into the middle of a file does not split it.
+
+## D51 — The Android app is the site as a Trusted Web Activity, with chapters kept offline
+
+**Context.** Reading on a phone in the browser meant the address bar always in view and nothing
+to read without a connection. Readers want an app, and to keep chapters on the phone: exact
+chapters, or so many ahead of where they are.
+
+**Decision.**
+- **A Trusted Web Activity, not a native rebuild or a Capacitor shell.** The app is the site,
+  shown by Chrome full screen, so it stays same-origin: the cookie sign-in (D20), the hub, the
+  CSP and the same-origin guard (D42) need no change, and a web deploy updates the app.
+  Capacitor would have run the page at `https://localhost`, cross-origin to the server, needing
+  token auth, CORS and a second hub auth path, and a new APK for every change to the page.
+- **Installable**: a web app manifest and a hand-written service worker (`public/sw.js`): the
+  reading page's shell network first, hashed build files cache first, downloaded pictures from
+  their own cache. Hand-written rather than `@angular/service-worker` because the shell is a
+  controller's response with a rewritten `<base>`, not a static `index.html`.
+- **Downloads** go chapter by chapter through a new hub method, `DownloadChapter`: the reader's
+  gate still holds a download to one source-site request at a time (D17), but no prefetch is
+  scheduled and nothing enters the 64-entry memory tier every reader shares. Chapters and
+  bookmarks are kept in IndexedDB per reader, pictures in Cache Storage; persistent storage is
+  requested on the first download.
+- **Offline**, the page opens at the device's latest bookmark after 4 s without the hub, reads
+  stored chapters, and says plainly when one is not on the device. Bookmarks are always written
+  locally and sent once there is a connection; on the way back the unsent ones go first, so the
+  server's "most recent" is where the reader really is.
+- **Full screen** needs the site to vouch for the APK's key: `/.well-known/assetlinks.json` is
+  served by the app from configuration, and nginx must pass that root path through.
+
+**Verified.** One new unit test (a download schedules no prefetch and fills no memory tier);
+all 352 pass. Locally in Chrome: the worker cached the shell and the whole build; from the
+drawer, *this and the next 7* stored chapters 1–8 of an uploaded book (7 MB with its pictures)
+and `10-11` stored two more, all marked `offline` in the chapter menu. With the server stopped,
+a reload opened at the same paragraph from the device, a lazy illustration loaded from the
+cache, chapter 8 followed, and at chapter 9 the page said it was not on the device. With the
+server back, the offline bookmark (8/489) reached Mongo and chapter 9 loaded by itself.
+
+The debug APK builds (JDK 17 and Gradle via mise, the SDK in `~/Android/Sdk`): 552 KB, launching
+`https://primotibalt.top/reader/ReadingPage`; its debug key's fingerprint is the one listed in
+appsettings for now. It has not been run on a phone.
+
+**Not done.** No release signing key yet (the README says how; replace the debug fingerprint
+with it). No
+"keep N ahead downloaded as I read" setting; downloads are by hand. Downloaded chapters keep the
+underlines they had when downloaded until they are read online again. Definitions, translations
+and saving words need the connection.

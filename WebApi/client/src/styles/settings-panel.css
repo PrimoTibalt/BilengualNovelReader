@@ -243,6 +243,11 @@ html:not(.touch-input) .settings-cursor:focus {
 	border-color: var(--tui-error);
 }
 
+/* A count of chapters: a few digits, leaving the row to its button (D51). */
+.settings-field--count {
+	flex: 0 0 7ch;
+}
+
 .settings-field--hex {
 	text-transform: lowercase;
 }

@@ -115,6 +115,11 @@ export interface ChapterView extends ChapterWire {
    * wait out and retry (D28).
    */
   readonly failed: boolean;
+  /**
+   * Set by the page, never the server: offline, and this chapter is not on the device. It loads
+   * once the connection is back (D51).
+   */
+  readonly notDownloaded?: boolean;
 }
 
 /** One hit from a novel search. `slug` is the name every other call uses. */

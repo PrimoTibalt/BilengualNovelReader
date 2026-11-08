@@ -14,12 +14,15 @@ import {
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { appUrl } from "../core/app-base";
 import { UploadSection } from "../books/upload-section";
-import type { BookContentsView, ChapterView, ConnectionState, NovelSummary } from "../core/hub-models";
+import type { BookContentsView, ChapterView, ConnectionState, NovelSummary, ReadingSessionView } from "../core/hub-models";
 import { ProgressDots } from "../core/progress-dots";
 import { KeyboardRouter, type KeyMode, bindings } from "../core/keyboard-router";
 import { isTouchPrimary, markPointerMode } from "../core/pointer";
 import { ReaderConnection } from "../core/reader-connection";
 import { ReaderState } from "../core/reader-state";
+import { OfflineStore } from "../core/offline-store";
+import { ChapterDownloads } from "../offline/chapter-downloads";
+import { OfflineSection } from "../offline/offline-section";
 import { DefinitionBox } from "../definition/definition-box";
 import type { MenuItem, MenuScreen } from "../navigation/menu-screen";
 import { NavigationMenu } from "../navigation/navigation-menu";
@@ -86,6 +89,13 @@ const chapterWindow = 12;
 /** Matches the hub's own minimum; below this the server answers with nothing anyway. */
 const minimumSearchLength = 2;
 
+/**
+ * How long the page waits for the server before opening from the device instead (D51). Long
+ * enough for a slow mobile connection to answer; short enough that a reader on a plane is not
+ * left looking at nothing. The connection carries on trying either way.
+ */
+const onlineWaitInMilliseconds = 4000;
+
 /** How long after the last font-size change the run counts as over, and is checked again. */
 const fontChangeSettleInMilliseconds = 200;
 
@@ -97,6 +107,7 @@ const fontChangeSettleInMilliseconds = 200;
     AssistantSection,
     DefinitionBox,
     NavigationMenu,
+    OfflineSection,
     PasswordSection,
     ReviewOverlay,
     ReviewSection,
@@ -114,6 +125,8 @@ export class ReadingPage implements AfterViewInit {
   readonly #router = inject(KeyboardRouter);
   readonly #connection = inject(ReaderConnection);
   readonly #state = inject(ReaderState);
+  readonly #offline = inject(OfflineStore);
+  readonly #downloads = inject(ChapterDownloads);
 
   protected readonly isTouch = isTouchPrimary;
 
@@ -126,6 +139,20 @@ export class ReadingPage implements AfterViewInit {
   #novels: readonly NovelSummary[] = [];
   /** The open novel's table of contents when it is an uploaded book; null for a site novel (D50). */
   #bookContents: BookContentsView | null = null;
+  /** The open novel's chapters on this device, for the chapter menu (D51). */
+  #downloadedChapters = new Set<number>();
+
+  /**
+   * Opened offline, from the device: the session — the reader's settings, their library — is
+   * fetched once the connection arrives, without reopening what they are reading (D51).
+   */
+  #sessionPending = false;
+
+  /** What the drawer's offline section downloads for: the novel open and the chapter on screen. */
+  protected readonly currentNovel = signal("");
+  protected readonly currentNovelTitle = signal<string | null>(null);
+  protected readonly currentTotalChapters = signal<number | null>(null);
+  protected readonly currentChapter = signal(1);
 
   /** The highest chapter currently on the page; the next scroll past the bottom loads its successor. */
   #lastLoadedChapter = 0;
@@ -149,6 +176,8 @@ export class ReadingPage implements AfterViewInit {
   protected readonly chapterInFlight = signal<number | undefined>(undefined);
   /** A chapter the site did not serve, shown with a retry where it would have been (D49). */
   protected readonly chapterUnavailable = signal<number | undefined>(undefined);
+  /** Offline, a chapter that is not on the device: it loads once the connection is back (D51). */
+  protected readonly chapterNotDownloaded = signal<number | undefined>(undefined);
   /** The chapter after the last one published, once the reader has reached it (D49). */
   protected readonly noChapterYet = signal<number | undefined>(undefined);
   /** A word saved straight from a selection, with no box open to say so, until the server answers (D48). */
@@ -311,6 +340,12 @@ export class ReadingPage implements AfterViewInit {
       const state = this.connectionState();
       if (state !== undefined) this.#showConnectionState(state);
     });
+
+    // A chapter downloaded for the open novel is marked in the chapter menu.
+    effect(() => {
+      this.#downloads.changes();
+      void this.#loadDownloadedChapters(this.#novelName);
+    });
   }
 
   ngAfterViewInit(): void {
@@ -327,7 +362,8 @@ export class ReadingPage implements AfterViewInit {
     /** Puts the reader back on their line when the column is re-laid out under them (D36). */
     this.#readingAnchor = new ReadingAnchor(column);
     this.#progressReporter = new ProgressReporter(column, (position) => {
-      this.#connection.reportProgress(this.#novelName, position.chapterNumber, position.paragraphNumber);
+      this.currentChapter.set(position.chapterNumber);
+      void this.#keepPosition(this.#novelName, position);
       // The reader has settled somewhere; whatever is now far enough above them can go (D37).
       this.#trimChaptersAbove();
     });
@@ -345,22 +381,135 @@ export class ReadingPage implements AfterViewInit {
     void this.#start();
   }
 
+  /**
+   * Online, the session decides where the reader lands. Offline — or with the server not answering
+   * within {@link onlineWaitInMilliseconds} — the page opens from the device at the last bookmark
+   * kept there, and completes the session once the connection arrives (D51).
+   */
   async #start(): Promise<void> {
-    try {
-      await this.#connection.start();
-      const session = await this.#connection.getReadingSession();
-      this.#novels = session.novels;
-      this.#state.translationEmail.set(session.translationEmail);
-      this.#state.translationLanguage.set(session.translationLanguage);
-      this.#state.translationLanguages.set(session.translationLanguages);
-      this.#state.assistant.set(session.assistant);
+    const online = navigator.onLine !== false && (await this.#connection.startWithin(onlineWaitInMilliseconds));
+    if (!online) {
+      // Keeps trying underneath; `#showConnectionState` finishes the session when it gets through.
+      void this.#connection.start();
+      this.#sessionPending = true;
+      await this.#openFromDevice();
+      return;
+    }
 
+    try {
+      const session = await this.#sessionWithBookmarksSent();
+      this.#applySession(session);
       await this.#openNovelAt(session.novelName, session.chapterNumber, session.paragraphNumber, session.resuming);
     } catch (error: unknown) {
-      // `start` waits out an unreachable server rather than failing, so reaching here means the
-      // first calls after it did not go through. The connection keeps trying underneath.
+      // The connection dropped between connecting and the first calls. It keeps trying underneath.
       console.error(error instanceof Error ? error.toString() : String(error));
-      this.#showNotice("Could not reach the server.");
+      this.#sessionPending = true;
+      await this.#openFromDevice();
+    }
+  }
+
+  /**
+   * The reading session, after any bookmark made offline has reached the server — so the session's
+   * "most recent" is where the reader really got to. Only the same reader's bookmarks are sent: the
+   * device remembers whoever signed in last, and the cookie may now be someone else's.
+   */
+  async #sessionWithBookmarksSent(): Promise<ReadingSessionView> {
+    const session = await this.#connection.getReadingSession();
+    if (this.#offline.user !== session.userName) return session;
+
+    const sent = await this.#sendUnsentBookmarks();
+    return sent ? await this.#connection.getReadingSession() : session;
+  }
+
+  #applySession(session: ReadingSessionView): void {
+    this.#offline.useReader(session.userName);
+    this.#novels = session.novels;
+    this.#state.translationEmail.set(session.translationEmail);
+    this.#state.translationLanguage.set(session.translationLanguage);
+    this.#state.translationLanguages.set(session.translationLanguages);
+    this.#state.assistant.set(session.assistant);
+  }
+
+  /** Opens at the most recent bookmark on the device, with the device's novels as the library. */
+  async #openFromDevice(): Promise<void> {
+    try {
+      const novels = await this.#offlineLibrary();
+      this.#novels = novels;
+      const latest = (await this.#offline.positions()).at(-1);
+
+      if (latest) {
+        await this.#openNovelAt(latest.novel, latest.chapter, latest.paragraph, true);
+        return;
+      }
+
+      const first = novels[0];
+      const chapters = first ? await this.#offline.chapterNumbers(first.slug) : [];
+      if (first && chapters.length > 0) {
+        await this.#openNovelAt(first.slug, chapters[0]!, 1, false);
+        return;
+      }
+    } catch (error: unknown) {
+      console.error("Could not open from the device:", error);
+    }
+
+    this.#showNotice("You are offline, and nothing has been downloaded on this device yet.");
+  }
+
+  /** The novels with chapters on this device, as the library menu lists them. */
+  async #offlineLibrary(): Promise<NovelSummary[]> {
+    const novels: NovelSummary[] = [];
+    for (const novel of await this.#offline.novels()) {
+      const chapters = await this.#offline.chapterNumbers(novel.slug);
+      if (chapters.length > 0) {
+        novels.push({ slug: novel.slug, title: novel.title, rank: null, totalChapters: novel.totalChapters });
+      }
+    }
+    return novels;
+  }
+
+  /** The connection came back to a page that opened offline: fetch what it would have started with. */
+  async #completeSession(): Promise<void> {
+    try {
+      const reader = this.#offline.user;
+      const session = await this.#connection.getReadingSession();
+      if (reader !== null && reader !== session.userName) {
+        // The device's shelf was someone else's: start over as the reader the cookie names.
+        window.location.reload();
+        return;
+      }
+
+      this.#applySession(session);
+      await this.#sendUnsentBookmarks();
+      void this.#loadBookContents(this.#novelName);
+    } catch (error: unknown) {
+      console.warn("Session not completed; trying again on the next reconnect:", error);
+      this.#sessionPending = true;
+    }
+  }
+
+  /** Every bookmark the server has not got, oldest first, so the newest ends up the most recent. */
+  async #sendUnsentBookmarks(): Promise<boolean> {
+    let sent = false;
+    for (const position of await this.#offline.positions().catch(() => [])) {
+      if (position.sent) continue;
+      if (!(await this.#connection.reportProgress(position.novel, position.chapter, position.paragraph))) return sent;
+      await this.#offline.markSent(position.novel, position.chapter, position.paragraph).catch(() => undefined);
+      sent = true;
+    }
+    return sent;
+  }
+
+  /**
+   * The settled bookmark: kept on the device first, then sent, and marked sent once the server has
+   * it. Offline it simply waits there for {@link #sendUnsentBookmarks} (D51).
+   */
+  async #keepPosition(novel: string, position: ReadingPosition): Promise<void> {
+    const { chapterNumber, paragraphNumber } = position;
+    await this.#offline.savePosition(novel, chapterNumber, paragraphNumber, false).catch(() => undefined);
+    if (!this.#connection.isConnected()) return;
+
+    if (await this.#connection.reportProgress(novel, chapterNumber, paragraphNumber)) {
+      await this.#offline.markSent(novel, chapterNumber, paragraphNumber).catch(() => undefined);
     }
   }
 
@@ -616,11 +765,12 @@ export class ReadingPage implements AfterViewInit {
 
   async #loadAndAppend(chapterNumber: number): Promise<ChapterView> {
     this.chapterUnavailable.set(undefined);
+    this.chapterNotDownloaded.set(undefined);
     this.#retryUnavailable = undefined;
     this.chapterInFlight.set(chapterNumber);
     let chapter: ChapterView;
     try {
-      chapter = await this.#connection.loadChapter(this.#novelName, chapterNumber);
+      chapter = await this.#fetchChapter(this.#novelName, chapterNumber);
     } finally {
       // Cleared before the chapter is rendered, so the two are never both in the column while
       // it is measured (D36, D37).
@@ -630,6 +780,8 @@ export class ReadingPage implements AfterViewInit {
     if (chapter.found) {
       this.#appendChapter(chapter);
       this.#lastLoadedChapter = Math.max(this.#lastLoadedChapter, chapterNumber);
+    } else if (chapter.notDownloaded) {
+      this.chapterNotDownloaded.set(chapterNumber);
     } else if (chapter.failure === "unavailable") {
       // The site did not serve it, which is not the end of the novel: the reader is offered a
       // retry where the chapter would have been (D49). The caller says what retrying means.
@@ -641,6 +793,33 @@ export class ReadingPage implements AfterViewInit {
     }
 
     return chapter;
+  }
+
+  /**
+   * A chapter from the server while connected — and a copy kept on the device is refreshed with
+   * it — or from the device while not. Offline, a chapter that is not on the device is said to be
+   * so at once, rather than after the connection wait a load would sit through (D51). Online, a
+   * load that fails is answered from the device if it can be.
+   */
+  async #fetchChapter(novel: string, chapterNumber: number): Promise<ChapterView> {
+    const stored = async (): Promise<ChapterView | undefined> => {
+      const chapter = await this.#offline.getChapter(novel, chapterNumber).catch(() => undefined);
+      return chapter && { ...chapter, failed: false };
+    };
+
+    if (!this.#connection.isConnected()) {
+      return (await stored()) ?? {
+        novelName: novel, chapterNumber, paragraphs: [], found: false, failed: true, notDownloaded: true,
+      };
+    }
+
+    const chapter = await this.#connection.loadChapter(novel, chapterNumber);
+    if (chapter.found) {
+      void this.#offline.refreshIfStored(chapter).catch(() => undefined);
+      return chapter;
+    }
+
+    return chapter.failed || chapter.failure === "unavailable" ? ((await stored()) ?? chapter) : chapter;
   }
 
   /** The `retry` button and `r`: the chapter that did not load, asked for again (D49). */
@@ -704,6 +883,10 @@ export class ReadingPage implements AfterViewInit {
       this.#renderBlocks(() => []);
       if (this.#novelName !== novel) this.#bookContents = null;
       this.#novelName = novel;
+      this.currentNovel.set(novel);
+      this.currentChapter.set(chapterNumber);
+      this.#describeCurrentNovel();
+      void this.#loadDownloadedChapters(novel);
       this.#lastLoadedChapter = 0;
       // Not awaited: the chapter menu is the only thing that reads it, and not before it is opened.
       void this.#loadBookContents(novel);
@@ -758,9 +941,43 @@ export class ReadingPage implements AfterViewInit {
   async #loadBookContents(novel: string): Promise<void> {
     if (this.#bookContents?.slug === novel) return;
 
-    const contents = await this.#connection.getBookContents(novel);
+    // Offline, the copy kept when the novel was last opened online (D51).
+    const contents = this.#connection.isConnected()
+      ? await this.#connection.getBookContents(novel)
+      : ((await this.#offline.getNovel(novel).catch(() => undefined))?.contents ?? null);
+
     // The reader may have opened something else meanwhile.
-    if (this.#novelName === novel) this.#bookContents = contents;
+    if (this.#novelName !== novel) return;
+    this.#bookContents = contents;
+    this.#describeCurrentNovel();
+    if (this.#connection.isConnected()) void this.#rememberNovel(novel);
+  }
+
+  /** The open novel's title and length, for the offline section, from whatever knows them. */
+  #describeCurrentNovel(): void {
+    const novel = this.#novelName;
+    const summary = this.#novels.find((candidate) => candidate.slug === novel);
+    const contents = this.#bookContents?.slug === novel ? this.#bookContents : null;
+    this.currentNovelTitle.set(contents?.title ?? summary?.title ?? null);
+    this.currentTotalChapters.set(contents?.chapters.length ?? null);
+  }
+
+  /** What the device needs to show this novel offline: its name, length and table of contents. */
+  async #rememberNovel(novel: string): Promise<void> {
+    const summary = this.#novels.find((candidate) => candidate.slug === novel);
+    const contents = this.#bookContents?.slug === novel ? this.#bookContents : null;
+    await this.#offline.putNovel({
+      slug: novel,
+      title: contents?.title ?? summary?.title ?? null,
+      totalChapters: contents?.chapters.length ?? summary?.totalChapters ?? null,
+      contents,
+    }).catch(() => undefined);
+  }
+
+  async #loadDownloadedChapters(novel: string): Promise<void> {
+    if (novel === "") return;
+    const chapters = await this.#offline.chapterNumbers(novel).catch(() => []);
+    if (this.#novelName === novel) this.#downloadedChapters = new Set(chapters);
   }
 
   #onScroll(): void {
@@ -941,7 +1158,7 @@ export class ReadingPage implements AfterViewInit {
       const chapter = target;
       items.push({
         label: `Chapter ${chapter}`,
-        detail: chapter === current ? "current" : undefined,
+        detail: chapter === current ? "current" : this.#downloadedChapters.has(chapter) ? "offline" : undefined,
         run: () => goTo(chapter),
       });
     }
@@ -979,7 +1196,9 @@ export class ReadingPage implements AfterViewInit {
       title: "chapters",
       items: contents.chapters.map((chapter) => ({
         label: chapter.title,
-        detail: chapter.number === current ? "current" : `${chapter.number}`,
+        detail: chapter.number === current
+          ? "current"
+          : this.#downloadedChapters.has(chapter.number) ? `${chapter.number} · offline` : `${chapter.number}`,
         run: () => goTo(chapter.number),
       })),
       filterPlaceholder: "chapter name or number…",
@@ -1159,6 +1378,11 @@ export class ReadingPage implements AfterViewInit {
     this.definitionBox().setConnectionUp(state === "connected");
 
     if (state !== "connected") return;
+
+    if (this.#sessionPending) {
+      this.#sessionPending = false;
+      void this.#completeSession();
+    }
 
     const retry = this.#retryWhenConnected;
     this.#retryWhenConnected = undefined;

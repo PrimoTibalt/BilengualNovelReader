@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Novel Reader</string>
+    <!-- Must name the same origin as `host` in app/build.gradle.kts. -->
+    <string name="asset_statements" translatable="false">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {\"namespace\": \"web\", \"site\": \"https://primotibalt.top\"}
+        }]
+    </string>
+</resources>

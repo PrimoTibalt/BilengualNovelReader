@@ -157,7 +157,21 @@ namespace NovelReader
 		/// Found = false rather than an exception — the source site answers 200 with an empty
 		/// page often enough that it is a normal outcome, not a fault.
 		/// </summary>
-		public async Task<ChapterResponse> LoadChapter(string novelName, int chapterNumber)
+		public Task<ChapterResponse> LoadChapter(string novelName, int chapterNumber) =>
+			ServeChapter(novelName, chapterNumber, chapterReader.LoadChapterAsync);
+
+		/// <summary>
+		/// A chapter to keep on the device for reading offline (D51). Answered exactly like
+		/// <see cref="LoadChapter"/>, but without the prefetch and the memory cache a load uses:
+		/// the page asks for the chapters it is downloading one after another itself.
+		/// </summary>
+		public Task<ChapterResponse> DownloadChapter(string novelName, int chapterNumber) =>
+			ServeChapter(novelName, chapterNumber, chapterReader.DownloadChapterAsync);
+
+		private async Task<ChapterResponse> ServeChapter(
+			string novelName,
+			int chapterNumber,
+			Func<string, string, int, CancellationToken, Task<PreparedChapter>> load)
 		{
 			string userName = CallerName;
 
@@ -170,8 +184,7 @@ namespace NovelReader
 			List<ParagraphResponse> paragraphs = [];
 			try
 			{
-				PreparedChapter chapter = await chapterReader.LoadChapterAsync(
-					userName, novelName, chapterNumber, Context.ConnectionAborted);
+				PreparedChapter chapter = await load(userName, novelName, chapterNumber, Context.ConnectionAborted);
 
 				foreach ((int number, string markup) in chapter.Paragraphs.OrderBy(pair => pair.Key))
 				{

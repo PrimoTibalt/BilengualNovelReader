@@ -169,6 +169,8 @@ namespace NovelReader
 
 			app.MapControllers().WithStaticAssets();
 			app.MapHub<RealTimeReaderHub>("/signalr");
+			// What lets the Android app open full screen (D51).
+			app.MapAssetLinks();
 
 			app.MapGet("/", (HttpContext context) => {
         string uri = context.Request.PathBase + (context.User.Identity?.IsAuthenticated == true ? "/ReadingPage" : "/Login");

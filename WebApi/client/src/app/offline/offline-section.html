@@ -1,0 +1,39 @@
+<section class="settings-section">
+	<h2 class="settings-section__title">offline reading</h2>
+
+	<p class="settings-status" [class.settings-status--on]="stored().length > 0">{{ status() }}</p>
+
+	<!-- The chapter open now and the next so many: what to read on a flight. -->
+	<label class="settings-row">
+		<span class="settings-row__label">this and the next</span>
+		<span class="settings-row__controls">
+			<input #ahead type="number" class="settings-field settings-field--count" inputmode="numeric"
+				min="0" [max]="maximum" [value]="defaultAhead()" aria-label="How many chapters ahead to download" />
+			<button type="button" class="settings-button" [disabled]="running()" (click)="downloadAhead()">download</button>
+		</span>
+	</label>
+
+	<label class="settings-row">
+		<span class="settings-row__label">exact chapters</span>
+		<span class="settings-row__controls">
+			<input #list type="text" class="settings-field" spellcheck="false" autocomplete="off" autocapitalize="off"
+				inputmode="text" placeholder="e.g. 5-12, 20" aria-label="Chapters to download" />
+			<button type="button" class="settings-button" [disabled]="running()" (click)="downloadList()">download</button>
+		</span>
+	</label>
+
+	<p class="settings-note" role="status">
+		@if (running()) {
+			{{ progressText() }}<app-progress-dots />
+		} @else if (progressText()) {
+			{{ progressText() }}
+		} @else {
+			{{ note() }}
+		}
+	</p>
+
+	<div class="settings-actions">
+		<button type="button" class="settings-button" [disabled]="!running()" (click)="cancel()">stop</button>
+		<button type="button" class="settings-button" [disabled]="running() || stored().length === 0" (click)="remove()">remove from device</button>
+	</div>
+</section>

@@ -178,9 +178,46 @@ export class ReaderConnection {
     }
   }
 
-  /** Fire-and-forget bookmark; a lost one costs the reader nothing but a scroll. */
-  reportProgress(novelName: string, chapterNumber: number, paragraphNumber: number): void {
-    void this.#send("ReportProgress", novelName, chapterNumber, paragraphNumber);
+  /**
+   * Sends a bookmark; true once the server has it. The page keeps every bookmark on the device
+   * as well and only marks it sent on true, so one made offline is sent again later (D51).
+   */
+  async reportProgress(novelName: string, chapterNumber: number, paragraphNumber: number): Promise<boolean> {
+    try {
+      await this.call("ReportProgress", novelName, chapterNumber, paragraphNumber);
+      return true;
+    } catch (error: unknown) {
+      console.warn("Bookmark not sent:", error);
+      return false;
+    }
+  }
+
+  /**
+   * A chapter to keep on the device (D51): answered like {@link loadChapter}, without the
+   * server warming the next one — the download asks for each chapter itself.
+   */
+  async downloadChapter(novelName: string, chapterNumber: number): Promise<ChapterView> {
+    try {
+      const chapter = await this.call<ChapterWire>("DownloadChapter", novelName, chapterNumber);
+      return { ...chapter, failed: false };
+    } catch (error: unknown) {
+      console.error(`Could not download chapter ${chapterNumber} of '${novelName}':`, error);
+      return { novelName, chapterNumber, paragraphs: [], found: false, failed: true };
+    }
+  }
+
+  /** Whether calls go straight through now, rather than waiting for the connection. */
+  isConnected(): boolean {
+    return this.#connection.state === signalR.HubConnectionState.Connected;
+  }
+
+  /**
+   * Starts connecting, and says whether it is up within `milliseconds`. The attempt carries on
+   * either way; the page reads offline meanwhile and catches up when it lands (D51).
+   */
+  async startWithin(milliseconds: number): Promise<boolean> {
+    const started = this.#connectWithRetry().then(() => this.isConnected());
+    return await Promise.race([started, delay(milliseconds).then(() => this.isConnected())]);
   }
 
   /**

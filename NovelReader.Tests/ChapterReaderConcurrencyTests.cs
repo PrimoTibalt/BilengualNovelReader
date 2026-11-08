@@ -36,6 +36,31 @@ namespace NovelReader.Tests
 		}
 
 		[Fact]
+		public async Task Downloading_chapters_schedules_no_prefetch_and_fills_no_memory_tier()
+		{
+			InMemoryPreparedChapterCache cache = new();
+			CountingParagraphsRetriever retriever = new();
+			DeferredBackgroundWorkScheduler scheduler = new();
+			ChapterReader reader = new(
+				new ChapterPreparationService(new FakeNovelRepository(new FakeCollectionOfChapters()), retriever, new EmptyVocabularyRepository()),
+				cache,
+				scheduler,
+				new UserRequestGate());
+
+			for (int chapter = 1; chapter <= 5; chapter++)
+			{
+				PreparedChapter downloaded = await reader.DownloadChapterAsync(User, Novel, chapter);
+				Assert.Equal(10, downloaded.Paragraphs.Count);
+			}
+
+			// The download asks for each chapter itself (D51): nothing warmed behind it, nothing
+			// pushed into the memory tier every reader shares, and each chapter scraped once.
+			Assert.Equal(0, scheduler.ScheduledCount);
+			Assert.Null(await cache.TryGetFromMemoryAsync(User, Novel, 1));
+			Assert.Equal(5, retriever.TotalCalls);
+		}
+
+		[Fact]
 		public async Task Loading_a_chapter_returns_all_of_its_paragraphs()
 		{
 			Harness harness = Build();

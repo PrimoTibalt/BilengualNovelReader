@@ -39,6 +39,26 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 		}
 
 		/// <summary>
+		/// A chapter for the reader to keep on their device (D51). Takes the reader's turn like a
+		/// load, so a hundred chapters downloaded in a row still reach the source site one at a
+		/// time (D17). Unlike a load it neither schedules a prefetch — the download asks for the
+		/// next chapter itself — nor promotes anything into the memory tier, which is shared by
+		/// every reader and only 64 chapters deep: a long download would push everyone's chapters out.
+		/// </summary>
+		public async Task<PreparedChapter> DownloadChapterAsync(
+			string userName,
+			string novelName,
+			int chapterNumber,
+			CancellationToken cancellationToken = default)
+		{
+			using IDisposable turn = await userRequestGate.AcquireAsync(userName, cancellationToken);
+
+			return await preparedChapterCache.TryGetFromMemoryAsync(userName, novelName, chapterNumber, cancellationToken)
+				?? await preparedChapterCache.TryGetFromDurableAsync(userName, novelName, chapterNumber, cancellationToken)
+				?? await chapterPreparationService.PrepareAsync(userName, novelName, chapterNumber, cancellationToken);
+		}
+
+		/// <summary>
 		/// Memory tier, then the durable tier, then prepare it here and now. Reaching a
 		/// chapter that was waiting in the durable tier promotes it into memory and frees
 		/// that slot for the next one (D8).
