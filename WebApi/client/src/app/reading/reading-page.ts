@@ -879,6 +879,7 @@ export class ReadingPage implements AfterViewInit {
     if (this.#loadingChapter) return;
 
     this.#loadingChapter = true;
+    let opened = false;
     try {
       this.#renderBlocks(() => []);
       if (this.#novelName !== novel) this.#bookContents = null;
@@ -916,6 +917,7 @@ export class ReadingPage implements AfterViewInit {
         return;
       }
 
+      opened = true;
       if (resuming) {
         // Must not be scrolled before the column has settled, or the bookmark lands elsewhere.
         await this.#waitForStableLayout();
@@ -931,6 +933,7 @@ export class ReadingPage implements AfterViewInit {
       this.#readingAnchor?.record();
     } finally {
       this.#loadingChapter = false;
+      if (opened) void this.#fillPage();
     }
   }
 
@@ -985,9 +988,7 @@ export class ReadingPage implements AfterViewInit {
     this.#progressReporter?.scheduleReport();
 
     if (this.#scroller.isLocked || this.#loadingChapter || this.#reachedEnd) return;
-
-    const reachedBottom = window.innerHeight + window.scrollY >= this.#document.body.scrollHeight - 100;
-    if (!reachedBottom) return;
+    if (!this.#atBottom()) return;
 
     // Scrolling on at the bottom asks again for a chapter that did not load — and only for that:
     // after a failed jump the column is empty, and "the next chapter" would be chapter 1 (D49).
@@ -995,6 +996,28 @@ export class ReadingPage implements AfterViewInit {
       this.retryChapter();
       return;
     }
+
+    this.#loadNextChapter(this.#lastLoadedChapter + 1);
+  }
+
+  #atBottom(): boolean {
+    return window.innerHeight + window.scrollY >= this.#document.body.scrollHeight - 100;
+  }
+
+  /**
+   * Loads the next chapter when the reader is at the bottom already, with no scroll to get there:
+   * a chapter shorter than the screen — a cover, one illustration, a short afterword — cannot be
+   * scrolled, so the scroll that loads the next one would never come. Called after each chapter
+   * arrives, so it repeats until the page can scroll or the novel ends.
+   *
+   * Only after a chapter actually arrived, and never as a retry: a chapter that is unavailable, or
+   * offline not on the device, answers at once, and going again would spin. Those wait for the
+   * reader's `retry`, or for the connection (D28, D49, D51).
+   */
+  async #fillPage(): Promise<void> {
+    // Measured once the font and the pictures' reserved space are laid out, not before.
+    await this.#waitForStableLayout();
+    if (this.#loadingChapter || this.#reachedEnd || this.#retryUnavailable || !this.#atBottom()) return;
 
     this.#loadNextChapter(this.#lastLoadedChapter + 1);
   }
@@ -1008,8 +1031,10 @@ export class ReadingPage implements AfterViewInit {
     if (this.#loadingChapter || this.#reachedEnd) return;
 
     this.#loadingChapter = true;
+    let arrived = false;
     void this.#loadAndAppend(chapterNumber)
       .then((chapter) => {
+        arrived = chapter.found;
         if (chapter.failed) this.#retryWhenConnected = () => this.#loadNextChapter(chapterNumber);
         if (chapter.failure === "unavailable") this.#retryUnavailable = () => this.#loadNextChapter(chapterNumber);
         // Rolling forward off the last published chapter: said once, quietly (D49).
@@ -1019,6 +1044,8 @@ export class ReadingPage implements AfterViewInit {
       })
       .finally(() => {
         this.#loadingChapter = false;
+        // Still at the bottom — the chapter was as short as the screen — so carry on.
+        if (arrived) void this.#fillPage();
       });
   }
 

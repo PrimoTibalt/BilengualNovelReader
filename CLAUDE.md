@@ -333,6 +333,11 @@ Things to keep in mind when editing:
   the reader settles and after each append, correcting the scroll offset. A font-size change
   keeps the *bottom* paragraph in place (`keepReadingPosition`), a rotation the *top* line
   (`ReadingAnchor`) (D36).
+- **The next chapter loads from the scroll event, and from `#fillPage`**: a chapter shorter than
+  the screen (a cover on a phone) gives no scroll to wait for, so after each chapter arrives the
+  page checks whether it is already at the bottom and loads on until it can scroll or the novel
+  ends. Only after a chapter that arrived — an instant "unavailable" or "not on this device"
+  must not be asked for again in a loop.
 - **Nothing in the reading column may be wider than the column** (`overflow-wrap: anywhere`,
   D34). A paragraph that is only separator characters is drawn as a scene break.
 - **Waiting on the server is shown with `<app-progress-dots />`** (D48) after a word saying
