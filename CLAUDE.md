@@ -304,6 +304,8 @@ mapped at `/signalr`. The SignalR client is now an npm import, bundled.
   `MenuScreen`s**; activating a row can `push` another, Escape pops (clearing a filter first)
   and closes at the root. It handles no keys itself — the page binds `move`/`activate`/`back`
   through the router — except inside the filter field.
+  A row's name too long for the row scrolls sideways (swipe, or h/l on the selected row), with
+  the ends that hide more of it faded.
 - `app/review/` — the vocabulary review (D44): `review-overlay` (the panel over the text),
   `review-section`, `speech-input` (Web Speech dictation).
 

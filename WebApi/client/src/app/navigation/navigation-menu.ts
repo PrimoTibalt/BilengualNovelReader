@@ -82,8 +82,17 @@ export class NavigationMenu {
   protected readonly counter = computed(() =>
     this.matches().length === 0 ? "0" : `${this.selected() + 1}/${this.matches().length}`);
 
+  /** Whether the selected row's name is wider than its row, so h/l have something to scroll. */
+  protected readonly selectedOverflows = signal(false);
+
   protected readonly hints = computed(() =>
-    ["j/k move", "enter select", "/ filter", this.screens().length > 1 ? "esc back" : "esc close"].join("  ·  "));
+    [
+      "j/k move",
+      this.selectedOverflows() ? "h/l name" : undefined,
+      "enter select",
+      "/ filter",
+      this.screens().length > 1 ? "esc back" : "esc close",
+    ].filter((hint) => hint !== undefined).join("  ·  "));
 
   protected readonly filter = viewChild<ElementRef<HTMLInputElement>>("filter");
   protected readonly list = viewChild<ElementRef<HTMLElement>>("list");
@@ -102,6 +111,8 @@ export class NavigationMenu {
     afterRenderEffect(() => {
       const selected = this.selected();
       this.list()?.nativeElement.children[selected]?.scrollIntoView({ block: "nearest" });
+      const label = this.#selectedLabel();
+      this.selectedOverflows.set(label !== undefined && overflowOf(label) > 1);
     });
   }
 
@@ -160,6 +171,24 @@ export class NavigationMenu {
     const onClosed = this.#onClosed;
     this.#onClosed = undefined;
     onClosed?.();
+  }
+
+  /**
+   * h and l: slides the selected row's name along, most of a row's width at a time — a book's
+   * full title often does not fit, and its volume is at the end. On touch the name is swiped.
+   */
+  scrollName(step: 1 | -1): void {
+    const label = this.#selectedLabel();
+    if (label) label.scrollBy({ left: step * Math.max(1, label.clientWidth * 0.6) });
+  }
+
+  /** Keeps a scrolled name's fades in step with which of its ends are out of sight. */
+  protected onLabelScroll(event: Event): void {
+    if (event.target instanceof HTMLElement) applyOverflowFade(event.target);
+  }
+
+  #selectedLabel(): HTMLElement | undefined {
+    return this.list()?.nativeElement.children[this.selected()]?.querySelector<HTMLElement>(".navigation-list__label") ?? undefined;
   }
 
   /** Wraps at both ends. */
@@ -290,16 +319,28 @@ function matchItems(items: readonly MenuItem[], filterText: string): MatchedItem
 }
 
 /**
- * A row is one line. A label too long for its share of it is faded out over its last couple
- * of characters rather than clipped, so the dim column on the right — a novel's rank and
- * length — stays readable instead of being pushed off the row.
+ * A row is one line. A label too long for its share of it scrolls sideways — swiped on a phone,
+ * h/l on a keyboard — so a book's full title, volume and all, can be read, while the dim column
+ * on the right (a novel's rank and length) keeps its place.
  *
- * Measured rather than guessed: only the browser knows how wide the text ended up.
+ * Whichever end has more of the name beyond it is faded, so a clipped name visibly runs on
+ * rather than looking truncated: the right end at first, the left once it has been scrolled,
+ * both in between. Measured rather than guessed: only the browser knows how wide the text is.
  */
 function applyOverflowFades(list: HTMLElement): void {
   for (const label of Array.from(list.querySelectorAll<HTMLElement>(".navigation-list__label"))) {
-    // A pixel of slack: sub-pixel text widths make an exactly-fitting label look wider.
-    const overflowing = label.scrollWidth - label.clientWidth > 1;
-    label.classList.toggle("navigation-list__label--faded", overflowing);
+    applyOverflowFade(label);
   }
+}
+
+/** How far the label's text runs past its box, in pixels. */
+function overflowOf(label: HTMLElement): number {
+  return label.scrollWidth - label.clientWidth;
+}
+
+function applyOverflowFade(label: HTMLElement): void {
+  // A pixel of slack: sub-pixel text widths make an exactly-fitting label look wider.
+  const overflow = overflowOf(label);
+  label.classList.toggle("navigation-list__label--more-before", overflow > 1 && label.scrollLeft > 1);
+  label.classList.toggle("navigation-list__label--more-after", overflow > 1 && overflow - label.scrollLeft > 1);
 }

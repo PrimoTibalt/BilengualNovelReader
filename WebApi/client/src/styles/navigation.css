@@ -151,27 +151,44 @@ html.touch-input .navigation-panel__close {
 }
 
 /*
- * One row, one line. The label takes what is left after the detail column, and is clipped
- * rather than wrapped — a list whose rows change height as you filter is hard to read.
+ * One row, one line. The label takes what is left after the detail column, and is not wrapped —
+ * a list whose rows change height as you filter is hard to read. A name too long for it scrolls
+ * sideways instead: swiped on a phone, h/l on a keyboard. The scroll bar is not drawn; the fades
+ * below are what say there is more.
  */
 .navigation-list__label {
 	flex: 1;
 	min-width: 0;
 	white-space: nowrap;
-	overflow: hidden;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.navigation-list__label::-webkit-scrollbar {
+	display: none;
 }
 
 /*
- * A label that does not fit fades out instead of being cut off mid-glyph or ellipsised. The
- * gradient starts two characters from the end of the row, so the name visibly runs out of
- * space rather than looking truncated — and the rank and length keep their place on the line.
- *
- * The class is applied by the menu only when the text actually overflows; a mask is on the
- * element box, which for a short name would otherwise fade empty space.
+ * The end of a name with more of it out of sight fades, over two characters, instead of being cut
+ * off mid-glyph or ellipsised. The mask is on the label's box, not its text, so it stays put while
+ * the name slides under it. The classes are set by the menu from the scroll position — for a name
+ * that fits, a mask would fade empty space.
  */
-.navigation-list__label--faded {
+.navigation-list__label--more-after {
 	-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2ch), transparent 100%);
 	mask-image: linear-gradient(to right, #000 calc(100% - 2ch), transparent 100%);
+}
+
+.navigation-list__label--more-before {
+	-webkit-mask-image: linear-gradient(to right, transparent 0, #000 2ch);
+	mask-image: linear-gradient(to right, transparent 0, #000 2ch);
+}
+
+.navigation-list__label--more-before.navigation-list__label--more-after {
+	-webkit-mask-image: linear-gradient(to right, transparent 0, #000 2ch, #000 calc(100% - 2ch), transparent 100%);
+	mask-image: linear-gradient(to right, transparent 0, #000 2ch, #000 calc(100% - 2ch), transparent 100%);
 }
 
 /* Never squeezed out by a long name: this is the part the reader is comparing rows on. */

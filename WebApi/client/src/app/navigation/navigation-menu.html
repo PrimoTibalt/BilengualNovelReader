@@ -34,7 +34,7 @@
 							[class.navigation-list-option-selected]="$index === selected()"
 							[attr.aria-selected]="$index === selected()"
 							(click)="activateRow($index)">
-							<span class="navigation-list__label">{{ matched.before }}@if (matched.hit) {<span class="navigation-list__match">{{ matched.hit }}</span>}{{ matched.after }}</span>
+							<span class="navigation-list__label" (scroll)="onLabelScroll($event)">{{ matched.before }}@if (matched.hit) {<span class="navigation-list__match">{{ matched.hit }}</span>}{{ matched.after }}</span>
 							@if (matched.item.detail) {
 								<span class="navigation-list__detail">{{ matched.item.detail }}</span>
 							}
