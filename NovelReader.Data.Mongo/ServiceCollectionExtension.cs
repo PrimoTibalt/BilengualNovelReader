@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using NovelReader.Domain;
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.Review;
@@ -46,6 +47,7 @@ namespace NovelReader.Data.Mongo
 				VocabularyMongoRepository.EnsureIndexesAsync(client).GetAwaiter().GetResult();
 				ReadingProgressMongoStore.EnsureIndexesAsync(client).GetAwaiter().GetResult();
 				ReviewCardMongoStore.EnsureIndexesAsync(client).GetAwaiter().GetResult();
+				BookMongoStore.EnsureIndexesAsync(client).GetAwaiter().GetResult();
 			}
 			catch (Exception ex) { Console.WriteLine($"Could not ensure vocabulary indexes: {ex.Message}"); }
 
@@ -63,6 +65,7 @@ namespace NovelReader.Data.Mongo
 			services.AddSingleton<IDefinitionCache, DefinitionMongoCache>();
 			services.AddSingleton<IPreparedChapterCache, PreparedChapterCache>();
 			services.AddSingleton<IReviewCardStore, ReviewCardMongoStore>();
+			services.AddSingleton<IBookStore, BookMongoStore>();
 		}
 	}
 }

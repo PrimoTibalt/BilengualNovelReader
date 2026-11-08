@@ -13,7 +13,8 @@ import {
 } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { appUrl } from "../core/app-base";
-import type { ChapterView, ConnectionState, NovelSummary } from "../core/hub-models";
+import { UploadSection } from "../books/upload-section";
+import type { BookContentsView, ChapterView, ConnectionState, NovelSummary } from "../core/hub-models";
 import { ProgressDots } from "../core/progress-dots";
 import { KeyboardRouter, type KeyMode, bindings } from "../core/keyboard-router";
 import { isTouchPrimary, markPointerMode } from "../core/pointer";
@@ -101,6 +102,7 @@ const fontChangeSettleInMilliseconds = 200;
     ReviewSection,
     ServerMarkup,
     SettingsPanel,
+    UploadSection,
   ],
   templateUrl: "./reading-page.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -122,6 +124,8 @@ export class ReadingPage implements AfterViewInit {
 
   #novelName = "";
   #novels: readonly NovelSummary[] = [];
+  /** The open novel's table of contents when it is an uploaded book; null for a site novel (D50). */
+  #bookContents: BookContentsView | null = null;
 
   /** The highest chapter currently on the page; the next scroll past the bottom loads its successor. */
   #lastLoadedChapter = 0;
@@ -698,8 +702,11 @@ export class ReadingPage implements AfterViewInit {
     this.#loadingChapter = true;
     try {
       this.#renderBlocks(() => []);
+      if (this.#novelName !== novel) this.#bookContents = null;
       this.#novelName = novel;
       this.#lastLoadedChapter = 0;
+      // Not awaited: the chapter menu is the only thing that reads it, and not before it is opened.
+      void this.#loadBookContents(novel);
       this.#reachedEnd = false;
       this.noChapterYet.set(undefined);
 
@@ -742,6 +749,18 @@ export class ReadingPage implements AfterViewInit {
     } finally {
       this.#loadingChapter = false;
     }
+  }
+
+  /**
+   * A book's chapter titles, for the chapter menu. Asked for every novel opened: the server answers
+   * null for a site novel without looking anything up.
+   */
+  async #loadBookContents(novel: string): Promise<void> {
+    if (this.#bookContents?.slug === novel) return;
+
+    const contents = await this.#connection.getBookContents(novel);
+    // The reader may have opened something else meanwhile.
+    if (this.#novelName === novel) this.#bookContents = contents;
   }
 
   #onScroll(): void {
@@ -905,6 +924,9 @@ export class ReadingPage implements AfterViewInit {
   }
 
   #chapterScreen(): MenuScreen {
+    const contents = this.#bookContents;
+    if (contents !== null && contents.slug === this.#novelName) return this.#bookChapterScreen(contents);
+
     const menu = this.navigationMenu();
     const current = this.#lastLoadedChapter;
     const first = Math.max(1, current - chapterWindow);
@@ -937,6 +959,35 @@ export class ReadingPage implements AfterViewInit {
         if (wanted === undefined || (wanted >= first && wanted <= last)) return [];
 
         return [{ label: `Chapter ${wanted}`, detail: "not in the list — try it", run: () => goTo(wanted) }];
+      },
+    };
+  }
+
+  /**
+   * An uploaded book's chapters, all of them and by name: unlike a site novel, a book knows its
+   * table of contents (D50). A number typed into the filter still jumps straight there.
+   */
+  #bookChapterScreen(contents: BookContentsView): MenuScreen {
+    const menu = this.navigationMenu();
+    const current = this.#lastLoadedChapter;
+    const goTo = (target: number): void => {
+      menu.close();
+      void this.#openNovelAt(this.#novelName, target, 1, false);
+    };
+
+    return {
+      title: "chapters",
+      items: contents.chapters.map((chapter) => ({
+        label: chapter.title,
+        detail: chapter.number === current ? "current" : `${chapter.number}`,
+        run: () => goTo(chapter.number),
+      })),
+      filterPlaceholder: "chapter name or number…",
+      initialIndex: Math.max(0, current - 1),
+      itemsFromFilter: (text) => {
+        const wanted = parseChapterNumber(text);
+        const chapter = contents.chapters.find((candidate) => candidate.number === wanted);
+        return chapter === undefined ? [] : [{ label: chapter.title, detail: `${chapter.number}`, run: () => goTo(chapter.number) }];
       },
     };
   }
@@ -1057,6 +1108,22 @@ export class ReadingPage implements AfterViewInit {
 
   protected onSettingsClosed(): void {
     this.#router.pop("settings");
+  }
+
+  // ---- Uploaded books ----
+
+  /**
+   * A book the reader has just uploaded: it goes to the top of their library and opens at its
+   * first chapter, the novel they have now started (D50). The server has put the bookmark there.
+   */
+  protected onBookUploaded(book: { slug: string; title: string; chapterCount: number }): void {
+    this.#novels = [
+      { slug: book.slug, title: book.title, rank: null, totalChapters: book.chapterCount },
+      ...this.#novels.filter((novel) => novel.slug !== book.slug),
+    ];
+
+    this.settingsPanel().close();
+    void this.#openNovelAt(book.slug, 1, 1, false);
   }
 
   // ---- Review ----

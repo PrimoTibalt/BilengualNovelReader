@@ -136,6 +136,29 @@ export interface NovelSummary {
   readonly totalChapters: number | null;
 }
 
+/** One chapter of an uploaded book, as its table of contents names it (D50). */
+export interface BookChapterView {
+  readonly number: number;
+  readonly title: string;
+}
+
+/** An uploaded book's table of contents: unlike a site novel, a book knows its chapters (D50). */
+export interface BookContentsView {
+  readonly slug: string;
+  readonly title: string;
+  readonly author: string | null;
+  readonly chapters: readonly BookChapterView[];
+}
+
+/** The answer to `POST books`. `error` is a code; the page owns the wording (D50). */
+export interface BookUploadResult {
+  readonly succeeded: boolean;
+  readonly slug: string | null;
+  readonly title: string | null;
+  readonly chapterCount: number;
+  readonly error: string | null;
+}
+
 /** The first answer the page gets: who the reader is, their novels, and where they stopped. */
 export interface ReadingSessionView {
   readonly userName: string;

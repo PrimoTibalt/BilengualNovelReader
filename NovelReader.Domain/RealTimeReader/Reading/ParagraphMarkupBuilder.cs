@@ -1,4 +1,5 @@
 using System.Text;
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
 
 namespace NovelReader.Domain.RealTimeReader.Reading
@@ -73,6 +74,62 @@ namespace NovelReader.Domain.RealTimeReader.Reading
 
 			markup.Append(HtmlEscape(paragraphText[emittedUpTo..]));
 			return markup.ToString();
+		}
+
+		/// <summary>
+		/// A picture this small or smaller, standing alone, is an ornament rather than an
+		/// illustration: drawn at its own size, not stretched across the column (D50).
+		/// </summary>
+		public const int OrnamentMaximumPixels = 400;
+
+		/// <summary>
+		/// A paragraph of an uploaded book (D50): its text marked up exactly as a scraped
+		/// paragraph's, one run at a time, with its pictures between the runs. A picture is an
+		/// <c>&lt;img&gt;</c> the browser fetches lazily, carrying its size so the space is held
+		/// before it arrives. Everything taken from the file — the alt text included — is escaped,
+		/// as a scraped page is (D3).
+		/// </summary>
+		public static string BuildMarkup(
+			BookParagraph paragraph,
+			IReadOnlyDictionary<string, string> knownTerms,
+			string bookSlug)
+		{
+			StringBuilder markup = new();
+			foreach (BookInline inline in paragraph.Inlines)
+			{
+				if (inline.Image is BookImage image)
+				{
+					AppendImage(markup, bookSlug, image, ImageClass(paragraph, image));
+				}
+				else
+				{
+					markup.Append(BuildMarkup(inline.Text, knownTerms));
+				}
+			}
+
+			return markup.ToString();
+		}
+
+		private static string ImageClass(BookParagraph paragraph, BookImage image)
+		{
+			if (!paragraph.IsStandaloneImage)
+			{
+				return "book-image book-image--inline";
+			}
+
+			return image.Width <= OrnamentMaximumPixels && image.Height <= OrnamentMaximumPixels
+				? "book-image book-image--ornament"
+				: "book-image book-image--figure";
+		}
+
+		private static void AppendImage(StringBuilder markup, string bookSlug, BookImage image, string cssClass)
+		{
+			markup.Append("<img class=\"").Append(cssClass)
+				.Append("\" src=\"").Append(HtmlEscape(BookImageUrl.For(bookSlug, image.FileName)))
+				.Append("\" width=\"").Append(image.Width)
+				.Append("\" height=\"").Append(image.Height)
+				.Append("\" alt=\"").Append(HtmlEscape(image.Alt ?? string.Empty))
+				.Append("\" loading=\"lazy\" decoding=\"async\">");
 		}
 
 		private static void AppendKnownWord(StringBuilder markup, string surfaceForm, string normalizedTerm)

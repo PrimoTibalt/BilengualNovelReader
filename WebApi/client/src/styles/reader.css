@@ -70,6 +70,41 @@ body.reading-page {
 }
 
 /*
+ * Pictures in an uploaded book (D50). Each carries its width and height, so the browser holds its
+ * space before it has loaded — lazily, as it nears the screen — and nothing under it moves when it
+ * arrives: the bookmark is restored by measuring this column (D19, D36).
+ *
+ * An illustration standing alone is drawn across the column, however large the file; a small one
+ * standing alone (an ornament, a publisher's logo) keeps its own size, centred; one inside a line
+ * of text (a drawn dash) sits in the line. None is ever wider than the column (D34).
+ */
+#novel-paragraphs .book-image {
+	max-width: 100%;
+	height: auto;
+}
+
+#novel-paragraphs .book-image--figure {
+	display: block;
+	width: 100%;
+}
+
+#novel-paragraphs .book-image--ornament {
+	display: block;
+	margin: 0 auto;
+}
+
+#novel-paragraphs .book-image--inline {
+	vertical-align: middle;
+}
+
+/* The paragraph an illustration stands in is its frame: no indent, a little air either side. */
+#novel-paragraphs p:has(> .book-image--figure, > .book-image--ornament) {
+	text-indent: 0;
+	text-align: center;
+	margin: 1.2em 0;
+}
+
+/*
  * The title has its own slider (D38), independent of the column's: it sits inside
  * #novel-paragraphs, whose size already carries `--reader-font-scale`, so that factor is
  * divided back out and only the title's own applies.

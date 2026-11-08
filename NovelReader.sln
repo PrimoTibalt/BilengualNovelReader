@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NovelReader.Dictionary", "N
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NovelReader.Data.Sqlite", "NovelReader.Data.Sqlite\NovelReader.Data.Sqlite.csproj", "{61E41C37-4DD3-4F72-85F0-2D4BD448191C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NovelReader.Books", "NovelReader.Books\NovelReader.Books.csproj", "{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -111,6 +113,18 @@ Global
 		{61E41C37-4DD3-4F72-85F0-2D4BD448191C}.Release|x64.Build.0 = Release|Any CPU
 		{61E41C37-4DD3-4F72-85F0-2D4BD448191C}.Release|x86.ActiveCfg = Release|Any CPU
 		{61E41C37-4DD3-4F72-85F0-2D4BD448191C}.Release|x86.Build.0 = Release|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Debug|x64.Build.0 = Debug|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Debug|x86.Build.0 = Debug|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Release|x64.ActiveCfg = Release|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Release|x64.Build.0 = Release|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Release|x86.ActiveCfg = Release|Any CPU
+		{EF7C7CBE-A867-4B1B-87E8-17613FB3D2E7}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

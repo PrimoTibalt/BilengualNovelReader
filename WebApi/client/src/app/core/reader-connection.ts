@@ -5,6 +5,7 @@ import { appUrl } from "./app-base";
 import type {
   AnswerOutcomeView,
   AssistantSettingsView,
+  BookContentsView,
   GiveUpView,
   MatchCheckView,
   ReviewExerciseView,
@@ -145,6 +146,19 @@ export class ReaderConnection {
   /** Where this reader left off in one novel, for opening it from the library menu. */
   async getNovelProgress(novelName: string): Promise<ReadingSessionView> {
     return await this.call<ReadingSessionView>("GetNovelProgress", novelName);
+  }
+
+  /**
+   * An uploaded book's table of contents, or null for a site novel — and for a call that did not
+   * get through, after which the chapter menu simply falls back to numbers (D50).
+   */
+  async getBookContents(novelName: string): Promise<BookContentsView | null> {
+    try {
+      return await this.call<BookContentsView | null>("GetBookContents", novelName);
+    } catch (error: unknown) {
+      console.error(`Could not load the contents of '${novelName}':`, error);
+      return null;
+    }
   }
 
   /**

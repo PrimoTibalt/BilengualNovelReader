@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NovelReader.Domain\NovelReader.Domain.csproj" />
     <ProjectReference Include="..\NovelReader.Dictionary\NovelReader.Dictionary.csproj" />
+    <ProjectReference Include="..\NovelReader.Books\NovelReader.Books.csproj" />
     <ProjectReference Include="..\NovelReader.Data.Sqlite\NovelReader.Data.Sqlite.csproj" />
     <ProjectReference Include="..\NovelReader.Retrievers\NovelReader.Retrievers.csproj" />
   </ItemGroup>

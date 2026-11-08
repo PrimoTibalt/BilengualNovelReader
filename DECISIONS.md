@@ -1930,3 +1930,50 @@ its end showed `no chapter 2335 yet`: the live site's not-found page, asked for 
 **Not done.** A gap in a novel's numbering, a chapter the site never had in the middle, still
 reads as the end; the catalogue's chapter count (D22) could tell the two apart. The retry is
 by hand after the server's three attempts; nothing retries on a timer.
+
+## D50 — Readers upload their own EPUBs; text in Mongo, pictures on disk
+
+**Context.** Readers want to read books they own, not only what the source site carries. The
+example was a Re:Zero volume: 13 table-of-contents entries over 40 spine files, colour inserts,
+full-page illustrations between the files of a chapter, and a dash drawn as a 111×2 picture
+inside dialogue. The file itself must not be kept on the server; FB2 is to follow.
+
+**Decision.**
+- **Upload** from the drawer's `your books` section: `POST books?fileName=…` with the file as the
+  raw body, read into memory (64 MB) and dropped. Not a multipart form, which ASP.NET buffers to
+  a temp file. 30 uploads an hour and 200 books per reader.
+- **Formats** are `IBookParser`s, asked in turn whether they recognise the file. `EpubParser`
+  (in the new `NovelReader.Books`) reads EPUB 2 and 3 with limits on entries and unpacked size;
+  FB2 is another parser registered beside it.
+- **Chapters follow the table of contents** (nav, else NCX) across spine files; what precedes
+  the first entry is a chapter named after the book; the contents page and non-linear items are
+  skipped. The entry's title is paragraph 1 (D19), so leading headings that spell it out again
+  are dropped — word by word, so `CHAPTER 1` + `BAPTISM` go and the section number `1` stays.
+  Inline styling is not carried over; `<br>` splits a paragraph, `<hr>` becomes a scene break.
+- **The book's name is `book--{16 random hex}`.** It passes `NovelSlug`, so bookmarks, the
+  library, saved words and the prepared-chapter cache need nothing new, and the double dash —
+  never in a site slug — routes it without a lookup. Every read names the owner.
+- **Text in Mongo** (`Books.Books`, `Books.Chapters`, one document per chapter with its owner).
+  **Pictures on disk** beside the accounts database, `novelreader-books/{slug}/{sha256}.{ext}`:
+  a volume carries ~14 MB of art, which would eat an Atlas quota a few books at a time, while
+  the text is ~1 MB. Content-addressed, so a picture used twice is stored once and is served
+  `immutable`. JPEG/PNG/GIF/WebP only, sniffed from the bytes; SVG never (it can carry script).
+- **Deferred pictures.** The chapter's markup has `<img loading="lazy" width height>`; the size,
+  read from the header at upload, holds the space so a late picture moves nothing the bookmark
+  is measured against. Alone and large: across the column. Alone and small: its own size. In a
+  line of text: in the line.
+- **On upload** the book gets a bookmark at chapter 1 and its title and length as library
+  details, then opens. The library never looks a book up in the catalogue. `GetBookContents`
+  gives the chapter menu the book's real titles.
+
+**Verified.** 22 new test cases (parsing on a synthetic EPUB 2 and 3, title echo, pictures,
+sniffing, markup escaping, upload rules and cleanup, owner-only reads, no scraping, path
+traversal); all 351 pass. Both Re:Zero volumes (26, 27) parse in under 250 ms into 13 chapters
+each. Run locally: upload over HTTP took 0.3 s; 401 signed out, 403 cross-origin, `unsupported`
+for a PDF; 23 pictures on disk and no copy of the EPUB anywhere. In Chrome the book opened at
+its cover, the chapter menu listed `Prologue…`, `Chapter 1: Baptism`…, illustrations filled the
+column and the drawn dash sat in its line at 111×2.
+
+**Not done.** No way yet to remove a book. Two readers uploading the same book store it twice.
+A JPEG rotated by its EXIF orientation is laid out at the stored aspect until it loads. A
+table-of-contents entry into the middle of a file does not split it.

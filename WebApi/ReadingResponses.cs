@@ -59,4 +59,10 @@ namespace NovelReader
 		/// with every lookup (D35). Never carries the key.
 		/// </summary>
 		AssistantSettingsResponse Assistant);
+
+	/// <summary>One chapter of an uploaded book, as its table of contents names it (D50).</summary>
+	public record BookChapterResponse(int Number, string Title);
+
+	/// <summary>An uploaded book's table of contents (D50).</summary>
+	public record BookContentsResponse(string Slug, string Title, string? Author, IReadOnlyList<BookChapterResponse> Chapters);
 }

@@ -1,3 +1,4 @@
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Vocabulary;
 
@@ -7,12 +8,17 @@ namespace NovelReader.Domain.RealTimeReader.Reading
     /// Turns a chapter into reader-ready markup: fetch the raw paragraphs (scraping on a
     /// cache miss), then wrap every word this reader has saved. A scraped page is put to the
     /// <c>chapterCheck</c>, when there is one, before it is stored (D47).
+    ///
+    /// An uploaded book (<see cref="UploadedBookSlug"/>) is read from the <c>bookStore</c>
+    /// instead, and only its owner's: there is nothing to scrape, so a chapter it does not have
+    /// is the end of the book (D50).
     /// </summary>
     public class ChapterPreparationService(
         INovelRepository novelRepository,
         IParagraphsRetriever paragraphsRetriever,
         IVocabularyRepository vocabularyRepository,
-        IChapterTextCheck? chapterCheck = null
+        IChapterTextCheck? chapterCheck = null,
+        IBookStore? bookStore = null
     )
     {
         /// <summary>
@@ -29,6 +35,11 @@ namespace NovelReader.Domain.RealTimeReader.Reading
             CancellationToken cancellationToken = default
         )
         {
+            if (UploadedBookSlug.IsUploaded(novelName))
+            {
+                return await PrepareBookChapterAsync(userName, novelName, chapterNumber, cancellationToken);
+            }
+
             IChapter rawChapter = await GetOrCreateChapterAsync(novelName, chapterNumber);
             IReadOnlyDictionary<string, string> knownTerms = await GetKnownTermsAsync(userName, cancellationToken);
 
@@ -50,6 +61,47 @@ namespace NovelReader.Domain.RealTimeReader.Reading
             return new PreparedChapter
             {
                 NovelName = novelName,
+                ChapterNumber = chapterNumber,
+                Paragraphs = markedUpParagraphs,
+                PreparedAtUtc = DateTime.UtcNow,
+            };
+        }
+
+        /// <summary>
+        /// A chapter of an uploaded book: its title as paragraph 1, as a scraped chapter's first
+        /// line is (D19), and its paragraphs numbered on from 2. Another reader's book is not found,
+        /// exactly as a book that does not exist is not.
+        /// </summary>
+        private async Task<PreparedChapter> PrepareBookChapterAsync(
+            string userName,
+            string bookSlug,
+            int chapterNumber,
+            CancellationToken cancellationToken
+        )
+        {
+            BookChapter? chapter = bookStore is null
+                ? null
+                : await bookStore.GetChapterAsync(userName, bookSlug, chapterNumber, cancellationToken);
+            if (chapter is null)
+            {
+                throw new ChapterNotFoundException($"'{bookSlug}' has no chapter {chapterNumber} for {userName}.");
+            }
+
+            IReadOnlyDictionary<string, string> knownTerms = await GetKnownTermsAsync(userName, cancellationToken);
+
+            Dictionary<int, string> markedUpParagraphs = new(chapter.Paragraphs.Count + 1)
+            {
+                [1] = ParagraphMarkupBuilder.BuildMarkup(chapter.Title, knownTerms),
+            };
+            int paragraphNumber = 2;
+            foreach (BookParagraph paragraph in chapter.Paragraphs)
+            {
+                markedUpParagraphs[paragraphNumber++] = ParagraphMarkupBuilder.BuildMarkup(paragraph, knownTerms, bookSlug);
+            }
+
+            return new PreparedChapter
+            {
+                NovelName = bookSlug,
                 ChapterNumber = chapterNumber,
                 Paragraphs = markedUpParagraphs,
                 PreparedAtUtc = DateTime.UtcNow,

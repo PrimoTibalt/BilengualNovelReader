@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using NovelReader.Retrievers;
+using NovelReader.Books;
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Data.Mongo;
 using NovelReader.Data.Sqlite;
 using NovelReader.Dictionary;
@@ -49,6 +51,13 @@ namespace NovelReader
 			builder.Services.AddSingleton(TimeProvider.System);
 			builder.Services.AddSingleton<ReviewService>();
 
+			// Uploaded books (D50): the text in Mongo, the pictures on disk beside the accounts
+			// database, so a deploy carries them over with it.
+			builder.Services.AddBooks(builder.Configuration["Books:ImageDirectory"] ?? Path.Combine(
+				NovelReader.Data.Sqlite.ServiceCollectionExtension.AccountsDirectory(builder.Configuration),
+				"novelreader-books"));
+			builder.Services.AddSingleton<BookUploadService>();
+
 			// The admin panel's sources (D45).
 			builder.Services.AddSingleton<ResponseTimeLog>();
 			builder.Services.AddSingleton<ConnectionTracker>();
@@ -90,6 +99,7 @@ namespace NovelReader
 					{
 						if (context.Request.Path.StartsWithSegments("/auth")
 							|| context.Request.Path.StartsWithSegments("/signalr")
+							|| context.Request.Path.StartsWithSegments("/" + BookImageUrl.RoutePrefix)
 							|| context.Request.Path.StartsWithSegments(AdminAccess.ApiPrefix))
 						{
 							context.Response.StatusCode = StatusCodes.Status401Unauthorized;

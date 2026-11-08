@@ -20,6 +20,7 @@
     <ProjectReference Include="..\NovelReader.Domain\NovelReader.Domain.csproj" />
     <ProjectReference Include="..\NovelReader.Retrievers\NovelReader.Retrievers.csproj" />
     <ProjectReference Include="..\NovelReader.Dictionary\NovelReader.Dictionary.csproj" />
+    <ProjectReference Include="..\NovelReader.Books\NovelReader.Books.csproj" />
   </ItemGroup>
 
   <!--

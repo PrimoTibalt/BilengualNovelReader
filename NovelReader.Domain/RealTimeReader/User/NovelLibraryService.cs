@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Reading;
 
@@ -40,7 +41,8 @@ namespace NovelReader.Domain.RealTimeReader.User
 			DateTime now = DateTime.UtcNow;
 			foreach (NovelSummary novel in novels)
 			{
-				if (IsStale(novel, now))
+				// An uploaded book is not in the catalogue; its details are the file's own (D50).
+				if (IsStale(novel, now) && !UploadedBookSlug.IsUploaded(novel.Slug))
 				{
 					ScheduleRefresh(userName, novel);
 				}

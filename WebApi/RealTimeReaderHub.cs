@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using NovelReader.Domain.Monitoring;
 using NovelReader.Domain.RealTimeReader.Accounts;
 using NovelReader.Domain.RealTimeReader.Assistant;
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Reading;
@@ -38,6 +39,7 @@ namespace NovelReader
 		AccountService accountService,
 		ReviewService reviewService,
 		AuthEventRecorder authEvents,
+		IBookStore bookStore,
 		ILogger<RealTimeReaderHub> logger) : Hub
 	{
 		/// <summary>Where a reader with no history starts.</summary>
@@ -191,6 +193,28 @@ namespace NovelReader
 			}
 
 			return new ChapterResponse(novelName, chapterNumber, paragraphs, paragraphs.Count > 0);
+		}
+
+		/// <summary>
+		/// An uploaded book's table of contents, for the chapter menu (D50): a book knows its
+		/// chapters' names and how many there are, which a scraped novel does not. Null for anything
+		/// that is not one of this reader's books — a site novel, someone else's book.
+		/// </summary>
+		public async Task<BookContentsResponse?> GetBookContents(string novelName)
+		{
+			if (!UploadedBookSlug.IsUploaded(novelName))
+			{
+				return null;
+			}
+
+			StoredBook? book = await bookStore.GetAsync(CallerName, novelName, Context.ConnectionAborted);
+			return book is null
+				? null
+				: new BookContentsResponse(
+					book.Slug,
+					book.Title,
+					book.Author,
+					[.. book.ChapterTitles.Select((title, index) => new BookChapterResponse(index + 1, title))]);
 		}
 
 		/// <summary><see cref="ChapterResponse.Failure"/> for a chapter the site did not serve, even after retrying.</summary>

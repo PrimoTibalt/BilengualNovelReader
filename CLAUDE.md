@@ -55,15 +55,18 @@ Tests: `dotnet test NovelReader.Tests` (xunit). No lint/format config.
 
 ## Architecture
 
-Five projects; dependencies point inward toward `NovelReader.Domain`, which has **zero package references** and holds only interfaces, POCOs and pure logic (password hashing lives there because PBKDF2 is BCL, not NuGet).
+Six projects; dependencies point inward toward `NovelReader.Domain`, which has **zero package references** and holds only interfaces, POCOs and pure logic (password hashing lives there because PBKDF2 is BCL, not NuGet).
 
 - `NovelReader.Domain` — interfaces (`INovelRepository`, `ICollectionOfChapters`, `IFilteredCollection`, `IChapter`, `IParagraphsRetriever`, `IUserDataHandler`), plus `NextParagraphProcessor`, the single piece of business logic.
 - `NovelReader.Retrievers` — `ParagraphsRetriever` scrapes chapter paragraphs from novelphoenix.com (formerly novelfire.net; `NovelSource:BaseAddress` overrides it) (`//div[@id='content']/p`) with HtmlAgilityPack over a named `HttpClient` ("NovelSource", browser User-Agent).
 - `NovelReader.Data.Mongo` — MongoDB implementations. **All classes here are `internal`**; the only public surface is `ServiceCollectionExtension`.
+- `NovelReader.Books` — uploaded books (D50): `EpubParser` (an `IBookParser`), the image
+  sniffer, and `FileSystemBookImageStore`. A new format (FB2) is another `IBookParser`
+  registered in its `AddBooks`.
 - `NovelReader.Data.Sqlite` — user accounts in a local SQLite file, same convention: everything `internal` bar `ServiceCollectionExtension`, with `InternalsVisibleTo` for the tests.
 - `WebApi` (project/assembly name `NovelReader`, root namespace `NovelReader`) — ASP.NET Core host, SignalR hub, static frontend.
 
-Each infrastructure project owns its own `ServiceCollectionExtension`; `WebApi/Program.cs` just calls `RegisterHttpClientAndRetriever()`, `AddMongoClient(configuration)`, `RegisterMongoImplementations()`, `AddSqliteAccounts(configuration)`. Adding a new infrastructure concern means adding an extension there, not wiring types individually in `Program.cs`.
+Each infrastructure project owns its own `ServiceCollectionExtension`; `WebApi/Program.cs` just calls `RegisterHttpClientAndRetriever()`, `AddMongoClient(configuration)`, `RegisterMongoImplementations()`, `AddSqliteAccounts(configuration)`, `AddBooks(imageDirectory)`. Adding a new infrastructure concern means adding an extension there, not wiring types individually in `Program.cs`.
 
 ### The repository abstraction mirrors the Mongo driver
 
@@ -169,6 +172,31 @@ Chapter URLs are built as `novel/{novelName}/chapter-{chapterNumber}` against th
 
 **Two rules keep this path from stampeding the source site (D17).** `ProcessAndReturnAsync` takes a `UserRequestGate` turn, so one reader is served one request at a time. And `SchedulePrefetch` claims a user/novel/chapter key *before* scheduling: every paragraph served asks for the next chapter to be warmed, so without that claim a 30-paragraph chapter queued 30 identical scrapes. The cache checks inside the prefetch cannot do that job — they all run before any of them writes. Prefetch must never take the gate; delaying the reader is exactly what D11 forbids.
 
+### Uploaded books (D50)
+
+A reader can upload an EPUB from the drawer (`app/books/upload-section`). `POST books?fileName=…`
+takes the file as the **raw request body**, not a form — ASP.NET buffers a multipart form to a
+temp file past 64 KB, and the file must never touch the server's disk. It is read into memory
+(64 MB limit, `[RequestSizeLimit]`; **nginx's `client_max_body_size` must allow it too**),
+parsed by `BookUploadService` and dropped. Rate-limited per reader (`AuthRateLimits.BookUpload`).
+
+- **Slug** `book--{16 hex}` (`UploadedBookSlug`): a valid `NovelSlug`, so bookmarks, the
+  library, saved words and the prepared-chapter cache work unchanged; the double dash, which
+  site slugs never have, is what routes it. `ChapterPreparationService` reads such a chapter
+  from `IBookStore` — **never scrapes** — and only the owner's; `NovelLibraryService` never
+  looks one up in the catalogue.
+- **Chapters follow the table of contents** (nav, else NCX), spanning spine files; spine items
+  before the first entry form a chapter titled with the book's title; the contents page and
+  non-linear items are skipped; leading headings that only repeat the title are dropped.
+  Chapter title is paragraph 1, as for scraped chapters.
+- **Pictures** are stored on disk, `{root}/{slug}/{sha256}.{ext}` (root `Books:ImageDirectory`,
+  default `novelreader-books/` beside the accounts DB — **a deploy must carry it over**), and
+  served to the owner only by `GET books/{slug}/images/{file}`, cached immutable. JPEG/PNG/GIF/
+  WebP only (sniffed, never SVG). The markup is `<img loading="lazy" width height>` so the space
+  is held before the picture loads: standalone large → `book-image--figure` (column width),
+  standalone small → `--ornament`, inside text → `--inline` (styles in `reader.css`).
+- `GetBookContents(novel)` gives the chapter menu the book's titles.
+
 ### Storage layout
 
 - Database `Novels`: **one collection per novel**, named by the novel slug. A chapter document is `{ _id, chapter: <int>, "1": "...", "2": "..." }` — paragraphs are `[BsonExtraElements]` on `Chapter`, keyed by the *stringified* paragraph number, hence `Dictionary<string, object>` and the cast in `TryGetParagraph`. Each collection carries a **unique index on `chapter`** (`chapter_unique`), ensured by `ChapterIndexes` the first time the novel is opened in a process; it also clears out any duplicates an earlier run stored. `TryGetExactlyOne()` keeps its `Single()` deliberately — it asserts the invariant the index guarantees (D17).
@@ -184,6 +212,9 @@ Chapter URLs are built as `novel/{novelName}/chapter-{chapterNumber}` against th
   migrated on start-up. **Mongo matches user names exactly while accounts match them
   case-insensitively**, so a legacy row for `Anton` is only reachable by an account registered
   as exactly `Anton`.
+- Database `Books` (D50): `Books` (one per uploaded book: owner, title, chapter titles) and
+  `Chapters` (`_id: "slug/N"`, with `owner`; a paragraph is a string, or an array of strings and
+  `{ img, w, h, alt }`). Pictures are files, not documents (see above).
 - SQLite (`novelreader-accounts.db`, gitignored, created on first run): the `accounts` table —
   credentials, the D31 translation settings, and the reader's AI (`assistant_service`,
   `assistant_model`, `assistant_key`). The key is Data-Protection-encrypted; the key ring lives

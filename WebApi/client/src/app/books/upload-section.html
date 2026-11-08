@@ -1,0 +1,25 @@
+<section class="settings-section">
+	<h2 class="settings-section__title">your books</h2>
+
+	<p class="settings-status">Read an EPUB of your own: its text and pictures are kept, the file is not.</p>
+
+	<!-- Outside every row, so the keyboard grid steps over it to the button below (D36). -->
+	<input #file type="file" [accept]="accept" hidden tabindex="-1" aria-hidden="true"
+		(change)="picked()" />
+
+	<p class="settings-note" role="status">
+		@if (stage(); as stage) {
+			@if (stage.kind === "uploading") {
+				uploading {{ stage.percent }}%<app-progress-dots />
+			} @else {
+				reading the book<app-progress-dots />
+			}
+		} @else {
+			{{ note() }}
+		}
+	</p>
+
+	<div class="settings-actions">
+		<button type="button" class="settings-button" [disabled]="stage() !== undefined" (click)="choose()">upload epub</button>
+	</div>
+</section>

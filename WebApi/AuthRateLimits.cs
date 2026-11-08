@@ -20,6 +20,9 @@ namespace NovelReader
 		public const string SignIn = "sign-in";
 		public const string SignUp = "sign-up";
 
+		/// <summary>Book uploads, per reader (D50): each is up to 64 MB to read and unpack.</summary>
+		public const string BookUpload = "book-upload";
+
 		public static void AddAuthRateLimits(this IServiceCollection services)
 		{
 			services.AddRateLimiter(options =>
@@ -37,9 +40,23 @@ namespace NovelReader
 					ClientAddress(context),
 					_ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromHours(1) }));
 
+				// Thirty an hour is a whole series uploaded in one sitting, and not a server kept busy.
+				options.AddPolicy(BookUpload, context => RateLimitPartition.GetFixedWindowLimiter(
+					context.User.Identity?.Name ?? ClientAddress(context),
+					_ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromHours(1) }));
+
 				// The login page shows the message of whatever JSON comes back, so say it in its shape.
 				options.OnRejected = async (rejected, cancellationToken) =>
 				{
+					// An upload is not a sign-in: answered in the upload's own shape, and not recorded
+					// among the sign-in attempts.
+					if (rejected.HttpContext.Request.Path.StartsWithSegments("/" + Domain.RealTimeReader.Books.BookImageUrl.RoutePrefix))
+					{
+						await rejected.HttpContext.Response.WriteAsJsonAsync(
+							new BookUploadResponse(false, null, null, 0, "rate-limited"), cancellationToken);
+						return;
+					}
+
 					string wait = "a minute";
 					if (rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
 					{
