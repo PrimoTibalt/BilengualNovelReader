@@ -197,7 +197,19 @@ parsed by `BookUploadService` and dropped. Rate-limited per reader (`AuthRateLim
   WebP only (sniffed, never SVG). The markup is `<img loading="lazy" width height>` so the space
   is held before the picture loads: standalone large → `book-image--figure` (column width),
   standalone small → `--ornament`, inside text → `--inline` (styles in `reader.css`).
-- `GetBookContents(novel)` gives the chapter menu the book's titles.
+- `GetBookContents(novel)` gives the chapter menu the book's titles, each flagged `extra` or not.
+- **Extras (D52)**: `BookExtras.MarkAsync` asks the classifier about every chapter at upload, four
+  at a time with a 15 s deadline; a chapter is an extra only when Jev gives it under 0.2. The
+  first chapter, when it is pictures only, is the cover and is never asked about; a book judged
+  all extras keeps everything. Extras are **stored, never dropped** (the file is gone, so a
+  misjudged chapter must stay recoverable): the page's `#rollForward` and `#readableBefore`
+  pass over them, the chapter menu hides them behind a `Show N extras` row, and past the last
+  chapter the page says `the end of the book`.
+- **Judged once, stamped (D53)**: a book carries `extrasJudgedAt` only when *every* chapter got an
+  answer — the classifier returns null for "no answer", never false. A book without the stamp
+  (uploaded before D52, without a Jev key, or during an outage) is judged by
+  `BookExtrasService.EnsureJudgedAsync` when `GetBookContents` is next called for it — on
+  opening — and stamped; two openings at once share one run.
 
 ### Offline reading and the Android app (D51)
 
@@ -390,6 +402,9 @@ null/false when unsure or unreachable — **Jev never blocks anything**.
   definition request** (translations still only for AI readers). The definition cache stores
   the dictionary's order and carries a `format` (2); an older entry is fetched again.
 - `IChapterTextCheck` — see the `ParagraphsRetriever` note under prototype seams.
+- `IBookChapterClassifier` — at upload, whether each chapter of a book is part of the book or an
+  *extra* (copyright, title page, afterword, newsletter, a distributor's ad) (D52). Extras are
+  stored but flagged; see Uploaded books.
 
 ### Saved words match in all their forms (D39)
 

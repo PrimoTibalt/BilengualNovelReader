@@ -40,6 +40,7 @@ namespace NovelReader
 		ReviewService reviewService,
 		AuthEventRecorder authEvents,
 		IBookStore bookStore,
+		BookExtrasService bookExtras,
 		ILogger<RealTimeReaderHub> logger) : Hub
 	{
 		/// <summary>Where a reader with no history starts.</summary>
@@ -221,13 +222,22 @@ namespace NovelReader
 			}
 
 			StoredBook? book = await bookStore.GetAsync(CallerName, novelName, Context.ConnectionAborted);
+
+			// A book not yet judged for extras — uploaded before D52, or while Jev was down — is
+			// judged now, once; about a second, for a book's first opening only (D53).
+			if (book is not null)
+			{
+				book = await bookExtras.EnsureJudgedAsync(book);
+			}
+
 			return book is null
 				? null
 				: new BookContentsResponse(
 					book.Slug,
 					book.Title,
 					book.Author,
-					[.. book.ChapterTitles.Select((title, index) => new BookChapterResponse(index + 1, title))]);
+					[.. book.ChapterTitles.Select((title, index) =>
+						new BookChapterResponse(index + 1, title, book.ExtraChapters.Contains(index + 1)))]);
 		}
 
 		/// <summary><see cref="ChapterResponse.Failure"/> for a chapter the site did not serve, even after retrying.</summary>

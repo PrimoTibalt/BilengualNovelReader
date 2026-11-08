@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NovelReader.Domain.RealTimeReader.Assistant;
 using NovelReader.Domain.RealTimeReader.Review;
 using NovelReader.Domain.RealTimeReader.Definitions;
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Domain.RealTimeReader.Reading;
 using NovelReader.Domain.RealTimeReader.Translation;
 
@@ -128,6 +129,7 @@ namespace NovelReader.Dictionary
 			services.AddSingleton<IAnswerJudge, JevAnswerJudge>();
 			services.AddSingleton<ISenseChooser, JevSenseChooser>();
 			services.AddSingleton<IChapterTextCheck, JevChapterTextCheck>();
+			services.AddSingleton<IBookChapterClassifier, JevBookChapterClassifier>();
 		}
 	}
 }

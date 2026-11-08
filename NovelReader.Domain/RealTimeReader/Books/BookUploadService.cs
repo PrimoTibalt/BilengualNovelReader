@@ -34,7 +34,8 @@ namespace NovelReader.Domain.RealTimeReader.Books
 		IEnumerable<IBookParser> parsers,
 		IBookStore bookStore,
 		IBookImageStore imageStore,
-		IReadingProgressStore readingProgressStore)
+		IReadingProgressStore readingProgressStore,
+		IBookChapterClassifier? chapterClassifier = null)
 	{
 		/// <summary>The largest file accepted. A long illustrated light-novel volume is about 15 MB.</summary>
 		public const long MaximumUploadBytes = 64L * 1024 * 1024;
@@ -85,16 +86,27 @@ namespace NovelReader.Domain.RealTimeReader.Books
 				return new BookUploadResult(BookUploadFailure.NoContent);
 			}
 
+			string title = TitleOf(parsed, fileName);
+
+			// The copyright page, the afterword and the like are kept but marked, so reading on
+			// passes over them (D52). Without a classifier nothing is marked.
+			BookExtrasResult extras = await BookExtras.MarkAsync(title, parsed.Chapters, chapterClassifier, cancellationToken);
+			IReadOnlyList<BookChapter> chapters = extras.Chapters;
+
 			string slug = UploadedBookSlug.New();
 			StoredBook book = new()
 			{
 				Slug = slug,
 				Owner = userName,
-				Title = TitleOf(parsed, fileName),
+				Title = title,
 				Author = parsed.Author,
 				Language = parsed.Language,
 				Format = parser.Format,
-				ChapterTitles = [.. parsed.Chapters.Select(chapter => chapter.Title)],
+				ChapterTitles = [.. chapters.Select(chapter => chapter.Title)],
+				ExtraChapters = [.. chapters.Where(chapter => chapter.IsExtra).Select(chapter => chapter.Number)],
+				// Not judged — no classifier, or it did not answer for every chapter — means it is
+				// judged again when the book is opened (D53).
+				ExtrasJudgedAtUtc = extras.Judged ? DateTime.UtcNow : null,
 				UploadedAtUtc = DateTime.UtcNow,
 			};
 
@@ -107,7 +119,7 @@ namespace NovelReader.Domain.RealTimeReader.Books
 					await imageStore.SaveAsync(slug, image.FileName, image.Bytes, cancellationToken);
 				}
 
-				await bookStore.SaveAsync(book, parsed.Chapters, cancellationToken);
+				await bookStore.SaveAsync(book, chapters, cancellationToken);
 			}
 			catch
 			{

@@ -292,6 +292,25 @@ namespace NovelReader.Tests
 					? found.Chapters.FirstOrDefault(chapter => chapter.Number == chapterNumber)
 					: null);
 
+			public Task<IReadOnlyList<BookChapter>> GetChaptersAsync(string owner, string slug, CancellationToken cancellationToken = default) =>
+				Task.FromResult(Books.TryGetValue(slug, out var found) && found.Book.Owner == owner ? found.Chapters : (IReadOnlyList<BookChapter>)[]);
+
+			public Task SaveExtrasAsync(string owner, string slug, IReadOnlyList<int> extraChapters, DateTime judgedAtUtc, CancellationToken cancellationToken = default)
+			{
+				(StoredBook book, IReadOnlyList<BookChapter> chapters) = Books[slug];
+				Books[slug] = (
+					new StoredBook
+					{
+						Slug = book.Slug, Owner = book.Owner, Title = book.Title, Format = book.Format, ChapterTitles = book.ChapterTitles,
+						UploadedAtUtc = book.UploadedAtUtc, ExtraChapters = extraChapters, ExtrasJudgedAtUtc = judgedAtUtc,
+					},
+					[.. chapters.Select(chapter => new BookChapter
+					{
+						Number = chapter.Number, Title = chapter.Title, Paragraphs = chapter.Paragraphs, IsExtra = extraChapters.Contains(chapter.Number),
+					})]);
+				return Task.CompletedTask;
+			}
+
 			public Task<long> CountForOwnerAsync(string owner, CancellationToken cancellationToken = default) =>
 				Task.FromResult((long)(ExtraBooks + Books.Values.Count(entry => entry.Book.Owner == owner)));
 
@@ -438,6 +457,179 @@ namespace NovelReader.Tests
 			// Only the site novel, which has never been looked up, is refreshed.
 			Assert.Equal(1, scheduler.ScheduledCount);
 			Assert.Contains("reverend-insanity", Assert.Single(scheduler.Descriptions));
+		}
+
+		// ---- Extras (D52) ----
+
+		/// <summary>Says "extra" for the titles it is given, and records what it was asked.</summary>
+		private sealed class TitleClassifier(params string[] extras) : IBookChapterClassifier
+		{
+			public List<BookChapterSample> Asked { get; } = [];
+			public TimeSpan Delay { get; init; }
+			public bool Throws { get; init; }
+			/// <summary>Answers nothing, as Jev does when it cannot be reached (D53).</summary>
+			public bool Silent { get; init; }
+
+			public async Task<bool?> IsExtraAsync(BookChapterSample sample, CancellationToken cancellationToken = default)
+			{
+				lock (Asked) Asked.Add(sample);
+				if (Delay > TimeSpan.Zero) await Task.Delay(Delay, cancellationToken);
+				if (Throws) throw new HttpRequestException("simulated outage");
+				return Silent ? null : extras.Contains(sample.ChapterTitle);
+			}
+		}
+
+		private static BookChapter Chapter(int number, string title, params BookParagraph[] paragraphs) =>
+			new() { Number = number, Title = title, Paragraphs = paragraphs };
+
+		private static BookParagraph Picture() =>
+			new([BookInline.OfImage(new BookImage(new string('b', 64) + ".jpg", 1200, 1800, null))]);
+
+		[Fact]
+		public async Task Chapters_judged_extras_are_marked_and_the_cover_is_never_asked_about()
+		{
+			BookChapter[] chapters =
+			[
+				Chapter(1, "Cover", Picture()),
+				Chapter(2, "Copyright", BookParagraph.OfText("Copyright © 2021")),
+				Chapter(3, "Chapter 1", BookParagraph.OfText("It began.")),
+				Chapter(4, "Afterword", BookParagraph.OfText("Thank you for reading!")),
+			];
+			TitleClassifier classifier = new("Cover", "Copyright", "Afterword");
+
+			BookExtrasResult marked = await BookExtras.MarkAsync("A Book", chapters, classifier);
+
+			Assert.True(marked.Judged);
+			Assert.Equal([false, true, false, true], marked.Chapters.Select(chapter => chapter.IsExtra));
+			Assert.DoesNotContain(classifier.Asked, sample => sample.ChapterTitle == "Cover");
+			BookChapterSample copyright = Assert.Single(classifier.Asked, sample => sample.ChapterTitle == "Copyright");
+			Assert.Equal(("A Book", 2, 4, "Copyright © 2021", 0), (copyright.BookTitle, copyright.Number, copyright.ChapterCount, copyright.Opening, copyright.PictureCount));
+		}
+
+		[Fact]
+		public async Task A_failing_or_slow_classifier_hides_nothing_and_never_holds_the_upload()
+		{
+			BookChapter[] chapters = [Chapter(1, "Chapter 1", BookParagraph.OfText("a")), Chapter(2, "Afterword", BookParagraph.OfText("b"))];
+
+			// Neither a broken, a silent nor a slow classifier hides anything, and none counts as judged.
+			foreach (TitleClassifier classifier in new[] { new TitleClassifier("Afterword") { Throws = true }, new TitleClassifier("Afterword") { Silent = true } })
+			{
+				BookExtrasResult result = await BookExtras.MarkAsync("A Book", chapters, classifier);
+				Assert.False(result.Judged);
+				Assert.All(result.Chapters, chapter => Assert.False(chapter.IsExtra));
+			}
+
+			System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+			BookExtrasResult slow = await BookExtras.MarkAsync(
+				"A Book", chapters, new TitleClassifier("Afterword") { Delay = TimeSpan.FromMinutes(5) });
+			Assert.False(slow.Judged);
+			Assert.All(slow.Chapters, chapter => Assert.False(chapter.IsExtra));
+			Assert.True(clock.Elapsed < BookExtras.Deadline + TimeSpan.FromSeconds(5));
+		}
+
+		[Fact]
+		public async Task A_book_judged_all_extras_keeps_every_chapter()
+		{
+			BookChapter[] chapters = [Chapter(1, "One", BookParagraph.OfText("a")), Chapter(2, "Two", BookParagraph.OfText("b"))];
+
+			BookExtrasResult marked = await BookExtras.MarkAsync("A Book", chapters, new TitleClassifier("One", "Two"));
+
+			Assert.True(marked.Judged);
+			Assert.All(marked.Chapters, chapter => Assert.False(chapter.IsExtra));
+		}
+
+		[Fact]
+		public async Task An_upload_records_its_extras_and_still_starts_at_chapter_one()
+		{
+			Shelf shelf = new();
+			RecordingProgressStore progress = new();
+			BookUploadService uploads = new([new EpubParser()], shelf, shelf, progress, new TitleClassifier("Chapter 2: Tom & Jerry"));
+
+			BookUploadResult result = await uploads.UploadAsync(Reader, "sample.epub", SampleEpub());
+
+			(StoredBook book, IReadOnlyList<BookChapter> chapters) = shelf.Books[result.Slug!];
+			Assert.Equal([3], book.ExtraChapters);
+			Assert.NotNull(book.ExtrasJudgedAtUtc);
+			Assert.True(chapters[2].IsExtra);
+			Assert.Equal(3, result.ChapterCount);
+			Assert.Equal(1, Assert.Single(progress.Saved).ChapterNumber);
+		}
+
+		// ---- Books not yet judged (D53) ----
+
+		private static async Task<(Shelf Shelf, StoredBook Book)> UploadedWithout(IBookChapterClassifier? classifier)
+		{
+			Shelf shelf = new();
+			BookUploadResult result = await new BookUploadService([new EpubParser()], shelf, shelf, new RecordingProgressStore(), classifier)
+				.UploadAsync(Reader, "sample.epub", SampleEpub());
+			return (shelf, shelf.Books[result.Slug!].Book);
+		}
+
+		[Fact]
+		public async Task A_book_uploaded_without_answers_is_not_stamped()
+		{
+			(_, StoredBook withoutJev) = await UploadedWithout(null);
+			(_, StoredBook duringOutage) = await UploadedWithout(new TitleClassifier("Chapter 2: Tom & Jerry") { Silent = true });
+
+			Assert.Null(withoutJev.ExtrasJudgedAtUtc);
+			Assert.Null(duringOutage.ExtrasJudgedAtUtc);
+			Assert.Empty(duringOutage.ExtraChapters);
+		}
+
+		[Fact]
+		public async Task An_unjudged_book_is_judged_and_stamped_when_opened_and_never_asked_about_again()
+		{
+			(Shelf shelf, StoredBook book) = await UploadedWithout(null);
+			TitleClassifier classifier = new("Chapter 2: Tom & Jerry");
+			BookExtrasService extras = new(shelf, classifier);
+
+			StoredBook judged = await extras.EnsureJudgedAsync(book);
+
+			Assert.Equal([3], judged.ExtraChapters);
+			Assert.NotNull(judged.ExtrasJudgedAtUtc);
+			Assert.Equal([3], shelf.Books[book.Slug].Book.ExtraChapters);
+			Assert.True(shelf.Books[book.Slug].Chapters[2].IsExtra);
+			// The cover is never asked about; the other two are, once.
+			Assert.Equal(2, classifier.Asked.Count);
+
+			StoredBook again = await extras.EnsureJudgedAsync(shelf.Books[book.Slug].Book);
+			Assert.Same(shelf.Books[book.Slug].Book, again);
+			Assert.Equal(2, classifier.Asked.Count);
+		}
+
+		[Fact]
+		public async Task Two_openings_at_once_share_one_judging()
+		{
+			(Shelf shelf, StoredBook book) = await UploadedWithout(null);
+			TitleClassifier classifier = new("Chapter 2: Tom & Jerry") { Delay = TimeSpan.FromMilliseconds(200) };
+			BookExtrasService extras = new(shelf, classifier);
+
+			StoredBook[] both = await Task.WhenAll(extras.EnsureJudgedAsync(book), extras.EnsureJudgedAsync(book));
+
+			Assert.All(both, judged => Assert.Equal([3], judged.ExtraChapters));
+			Assert.Equal(2, classifier.Asked.Count);
+		}
+
+		[Fact]
+		public async Task A_judging_without_answers_leaves_the_book_to_be_tried_again()
+		{
+			(Shelf shelf, StoredBook book) = await UploadedWithout(null);
+
+			StoredBook untouched = await new BookExtrasService(shelf, new TitleClassifier("Chapter 2: Tom & Jerry") { Silent = true }).EnsureJudgedAsync(book);
+			Assert.Null(untouched.ExtrasJudgedAtUtc);
+			Assert.Null(shelf.Books[book.Slug].Book.ExtrasJudgedAtUtc);
+
+			// Next opening, with the classifier back.
+			StoredBook judged = await new BookExtrasService(shelf, new TitleClassifier("Chapter 2: Tom & Jerry")).EnsureJudgedAsync(book);
+			Assert.Equal([3], judged.ExtraChapters);
+		}
+
+		[Fact]
+		public async Task Without_a_classifier_an_unjudged_book_is_left_as_it_is()
+		{
+			(Shelf shelf, StoredBook book) = await UploadedWithout(null);
+
+			Assert.Same(book, await new BookExtrasService(shelf).EnsureJudgedAsync(book));
 		}
 
 		[Fact]

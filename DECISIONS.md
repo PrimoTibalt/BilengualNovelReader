@@ -2023,3 +2023,66 @@ with it). No
 "keep N ahead downloaded as I read" setting; downloads are by hand. Downloaded chapters keep the
 underlines they had when downloaded until they are read online again. Definitions, translations
 and saving words need the connection.
+
+## D52 — Jev sets an uploaded book's extras aside
+
+**Context.** A light-novel EPUB carries more than the story: a title page, the copyright page, a
+distributor's advert, the afterword, a publisher's newsletter. Read on from the last chapter and
+the reader scrolls into them; open the book and the chapter list is a third front and back
+matter. Telling them apart by title alone works for "Copyright", not for "Jnovels".
+
+**Decision.**
+- **One yes/no question per chapter** to Jev (`JevBookChapterClassifier`, on the shared
+  `JevClient`), at upload: the book's title, the chapter's place, title and first 15 paragraphs
+  (3000 characters), or for pictures only how many. Part of the book means the story — prologue,
+  chapters, interludes, side stories, epilogue — and the book's own art, cover and colour
+  inserts. Everything else is an extra.
+- **An extra only when Jev is sure**: under 0.2 that it is part of the book. A failure, a slow
+  answer (the whole marking has 15 s) or a missing key leaves the chapter in. The first chapter,
+  if it is pictures only, is the cover and is not asked about. A book judged all extras is
+  misjudged, and nothing is marked.
+- **Stored and flagged, not dropped.** The uploaded file is not kept (D50), so a chapter thrown
+  away by mistake could not be had back. The page reads on past extras and opens above a
+  bookmark from the previous chapter that is not one; the chapter menu lists the book without
+  them, with a `Show N extras` row; after the last chapter the line reads `the end of the book`.
+  A typed number still opens any chapter.
+
+**Verified.** Against the live API, both Re:Zero volumes: every story chapter, the covers and the
+colour inserts scored 0.97 or more; Title Page, Copyright, Jnovels, the afterwords and the
+newsletters 0.04 or less, about 220 ms each. Twelve hand-made sections: a bonus short story,
+epilogue, side story and interlude 0.97 or more; contents 0.10; afterword, translator's notes,
+author's note, dedication and about-the-author 0.06 or less; a map and character art 0.61 and
+0.68, so kept. 11 new tests (the threshold either side of 0.2, a failing Jev, the description,
+the cover rule, the deadline, the all-extras guard, the upload recording its extras); all 363
+pass. Uploaded through the app with Jev, Vol. 26 took 1.2 s instead of 0.3 s and stored extras
+3, 4, 5, 12 and 13. In Chrome, reading on went from Insert straight to the Prologue, ended
+after Chapter 5 with `the end of the book`, and the menu showed the eight chapters and the row
+that brings the five extras back.
+
+**Not done.** A reader cannot move a chapter in or out of the extras by hand (books uploaded
+before this are judged when opened: D53). The choice to show extras lasts
+until the page is reloaded.
+
+## D53 — A book not yet judged for extras is judged when it is opened
+
+**Context.** D52 marks extras at upload, so books uploaded before it had none marked. The same
+went for any book uploaded without a Jev key, or while Jev was down — and there it was worse:
+the classifier answered "not an extra" both when Jev said so and when Jev said nothing, so an
+outage looked like a book with no extras.
+
+**Decision.**
+- **No answer is not "part of the book."** `IBookChapterClassifier` returns null when it got no
+  answer, and `BookExtras.MarkAsync` reports whether every chapter was judged. A chapter
+  without an answer is still shown.
+- **A book is stamped (`extrasJudgedAt`) only when every chapter was judged**, at upload or later.
+- **An unstamped book is judged when it is opened.** `GetBookContents`, which the page calls on
+  every opening, hands it to `BookExtrasService`: the chapters are read back, judged, their
+  `extra` flags and the book's list written, and the stamp set last. The opening waits for it,
+  about a second, once per book. Two openings at once share one run. Without a Jev key nothing
+  is judged or stamped, so old books are judged once a key is there.
+
+**Verified.** 5 new tests (unstamped without answers, judged and stamped on opening and never
+asked again, shared run, retried after a run without answers, nothing without a classifier); all
+368 pass. Live: Vol. 27 uploaded without Jev and stripped to the shape of a pre-D52 book; with
+Jev, its first opening asked 12 questions (not the cover), stamped it and set Jnovels, Afterword,
+Copyright and Yen Newsletter aside; the menu showed `Show 4 extras`. A reload asked nothing.

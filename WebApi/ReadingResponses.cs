@@ -61,7 +61,8 @@ namespace NovelReader
 		AssistantSettingsResponse Assistant);
 
 	/// <summary>One chapter of an uploaded book, as its table of contents names it (D50).</summary>
-	public record BookChapterResponse(int Number, string Title);
+	/// <param name="Extra">Not part of the book itself — copyright, afterword, newsletter (D52).</param>
+	public record BookChapterResponse(int Number, string Title, bool Extra);
 
 	/// <summary>An uploaded book's table of contents (D50).</summary>
 	public record BookContentsResponse(string Slug, string Title, string? Author, IReadOnlyList<BookChapterResponse> Chapters);

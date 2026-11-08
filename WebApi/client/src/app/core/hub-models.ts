@@ -145,6 +145,8 @@ export interface NovelSummary {
 export interface BookChapterView {
   readonly number: number;
   readonly title: string;
+  /** Not part of the book itself — copyright, afterword, newsletter — so reading on skips it (D52). */
+  readonly extra: boolean;
 }
 
 /** An uploaded book's table of contents: unlike a site novel, a book knows its chapters (D50). */

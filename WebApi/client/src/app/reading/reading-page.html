@@ -76,6 +76,9 @@
 } @else if (chapterNotDownloaded(); as chapterNumber) {
 	<!-- Offline, past what was downloaded: it loads by itself once the connection is back (D51). -->
 	<p class="chapter-status" role="status">chapter {{ chapterNumber }} is not on this device · it loads when you are online</p>
+} @else if (bookEnded()) {
+	<!-- After an uploaded book's last chapter; its extras are not read on into (D52). -->
+	<p class="chapter-status" role="status">the end of the book</p>
 } @else if (noChapterYet(); as chapterNumber) {
 	<p class="chapter-status" role="status">no chapter {{ chapterNumber }} yet</p>
 }

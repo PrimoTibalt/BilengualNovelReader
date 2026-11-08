@@ -49,6 +49,10 @@ namespace NovelReader.Data.Mongo
 				{ "language", book.Language is null ? BsonNull.Value : book.Language },
 				{ "format", book.Format },
 				{ "chapters", new BsonArray(book.ChapterTitles) },
+				// Not part of the book itself, in order (D52); absent on books uploaded before.
+				{ "extras", new BsonArray(book.ExtraChapters) },
+				// Set once every chapter was judged; a book without it is judged when opened (D53).
+				{ "extrasJudgedAt", book.ExtrasJudgedAtUtc is { } judgedAt ? judgedAt : BsonNull.Value },
 				{ "uploadedAt", book.UploadedAtUtc },
 			}, cancellationToken: cancellationToken);
 		}
@@ -69,6 +73,42 @@ namespace NovelReader.Data.Mongo
 				.FirstOrDefaultAsync(cancellationToken);
 
 			return document is null ? null : ToChapter(document);
+		}
+
+		public async Task<IReadOnlyList<BookChapter>> GetChaptersAsync(string owner, string slug, CancellationToken cancellationToken = default)
+		{
+			List<BsonDocument> documents = await Chapters
+				.Find(new BsonDocument { { "book", slug }, { "owner", owner } })
+				.Sort(new BsonDocument("chapter", 1))
+				.ToListAsync(cancellationToken);
+
+			return [.. documents.Select(ToChapter)];
+		}
+
+		public async Task SaveExtrasAsync(
+			string owner,
+			string slug,
+			IReadOnlyList<int> extraChapters,
+			DateTime judgedAtUtc,
+			CancellationToken cancellationToken = default)
+		{
+			BsonDocument mine = new() { { "book", slug }, { "owner", owner } };
+			await Chapters.UpdateManyAsync(mine, new BsonDocument("$set", new BsonDocument("extra", false)), cancellationToken: cancellationToken);
+			if (extraChapters.Count > 0)
+			{
+				BsonDocument extras = new(mine) { { "chapter", new BsonDocument("$in", new BsonArray(extraChapters)) } };
+				await Chapters.UpdateManyAsync(extras, new BsonDocument("$set", new BsonDocument("extra", true)), cancellationToken: cancellationToken);
+			}
+
+			// Last: the stamp says the chapters above are done.
+			await Books.UpdateOneAsync(
+				new BsonDocument { { "_id", slug }, { "owner", owner } },
+				new BsonDocument("$set", new BsonDocument
+				{
+					{ "extras", new BsonArray(extraChapters) },
+					{ "extrasJudgedAt", judgedAtUtc },
+				}),
+				cancellationToken: cancellationToken);
 		}
 
 		public Task<long> CountForOwnerAsync(string owner, CancellationToken cancellationToken = default) =>
@@ -122,6 +162,7 @@ namespace NovelReader.Data.Mongo
 				{ "owner", book.Owner },
 				{ "chapter", chapter.Number },
 				{ "title", chapter.Title },
+				{ "extra", chapter.IsExtra },
 				{ "paragraphs", paragraphs },
 			};
 		}
@@ -165,6 +206,7 @@ namespace NovelReader.Data.Mongo
 				Number = document.GetValue("chapter", 0).ToInt32(),
 				Title = document.GetValue("title", BsonString.Empty).AsString,
 				Paragraphs = paragraphs,
+				IsExtra = document.GetValue("extra", false).ToBoolean(),
 			};
 		}
 
@@ -194,6 +236,12 @@ namespace NovelReader.Data.Mongo
 			ChapterTitles = document.TryGetValue("chapters", out BsonValue chapters) && chapters.IsBsonArray
 				? [.. chapters.AsBsonArray.Select(title => title.IsString ? title.AsString : string.Empty)]
 				: [],
+			ExtraChapters = document.TryGetValue("extras", out BsonValue extras) && extras.IsBsonArray
+				? [.. extras.AsBsonArray.Where(number => number.IsInt32).Select(number => number.AsInt32)]
+				: [],
+			ExtrasJudgedAtUtc = document.TryGetValue("extrasJudgedAt", out BsonValue judged) && judged.IsValidDateTime
+				? judged.ToUniversalTime()
+				: null,
 			UploadedAtUtc = document.TryGetValue("uploadedAt", out BsonValue uploaded) && uploaded.IsValidDateTime
 				? uploaded.ToUniversalTime()
 				: DateTime.UnixEpoch,

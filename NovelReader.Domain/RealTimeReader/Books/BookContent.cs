@@ -41,6 +41,15 @@ namespace NovelReader.Domain.RealTimeReader.Books
 		public required int Number { get; init; }
 		public required string Title { get; init; }
 		public required IReadOnlyList<BookParagraph> Paragraphs { get; init; }
+
+		/// <summary>
+		/// Not part of the book itself — the copyright page, an afterword, a newsletter (D52). Kept,
+		/// but passed over when reading on and hidden in the chapter menu until asked for.
+		/// </summary>
+		public bool IsExtra { get; init; }
+
+		/// <summary>Pictures and nothing else: a cover, colour inserts, a title page.</summary>
+		public bool IsPicturesOnly => Paragraphs.Count > 0 && Paragraphs.All(paragraph => paragraph.IsStandaloneImage);
 	}
 
 	/// <summary>A picture taken out of the uploaded file, named by its content (D50).</summary>
@@ -76,6 +85,13 @@ namespace NovelReader.Domain.RealTimeReader.Books
 		public required string Format { get; init; }
 		/// <summary>Chapter titles in order; chapter N is at index N - 1.</summary>
 		public required IReadOnlyList<string> ChapterTitles { get; init; }
+		/// <summary>The chapters that are not part of the book itself (D52), in order.</summary>
+		public IReadOnlyList<int> ExtraChapters { get; init; } = [];
+		/// <summary>
+		/// When every chapter was judged for extras; null for a book uploaded before D52, or while
+		/// the classifier could not answer, which is judged when it is next opened (D53).
+		/// </summary>
+		public DateTime? ExtrasJudgedAtUtc { get; init; }
 		public required DateTime UploadedAtUtc { get; init; }
 	}
 }

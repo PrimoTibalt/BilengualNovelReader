@@ -37,6 +37,20 @@ namespace NovelReader.Domain.RealTimeReader.Books
 
 		Task<BookChapter?> GetChapterAsync(string owner, string slug, int chapterNumber, CancellationToken cancellationToken = default);
 
+		/// <summary>Every chapter of the book, in order; empty for a book that is not the owner's.</summary>
+		Task<IReadOnlyList<BookChapter>> GetChaptersAsync(string owner, string slug, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Records which chapters are extras — on the book and on each chapter — and when they were
+		/// judged (D53). Every other chapter is marked as part of the book.
+		/// </summary>
+		Task SaveExtrasAsync(
+			string owner,
+			string slug,
+			IReadOnlyList<int> extraChapters,
+			DateTime judgedAtUtc,
+			CancellationToken cancellationToken = default);
+
 		Task<long> CountForOwnerAsync(string owner, CancellationToken cancellationToken = default);
 
 		/// <summary>The book and all its chapters. Nothing happens for a book that is not there.</summary>

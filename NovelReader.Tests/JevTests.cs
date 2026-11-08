@@ -1,6 +1,7 @@
 using System.Globalization;
 using NovelReader.Dictionary;
 using NovelReader.Domain.RealTimeReader.Assistant;
+using NovelReader.Domain.RealTimeReader.Books;
 using NovelReader.Domain.RealTimeReader.Definitions;
 using NovelReader.Domain.RealTimeReader.Parsing;
 using NovelReader.Domain.RealTimeReader.Reading;
@@ -80,6 +81,47 @@ namespace NovelReader.Tests
 		public void None_an_unknown_number_or_an_unsure_pick_keeps_the_dictionary_order(string option, double probability)
 		{
 			Assert.Null(JevSenseChooser.IndexFor(new JevChoice(option, probability), senseCount: 42));
+		}
+
+		private static JevBookChapterClassifier BookClassifier(HttpMessageHandler handler) =>
+			new(new JevClient(
+				new StubHttpClientFactory(handler, "https://api.typesafe.ai/"),
+				Microsoft.Extensions.Logging.Abstractions.NullLogger<JevClient>.Instance));
+
+		private static readonly BookChapterSample Afterword =
+			new("Re:ZERO Vol. 26", 12, 13, "Afterword", "Hello! This is Tappei Nagatsuki!", 0);
+
+		[Theory]
+		[InlineData(0.01, true)]
+		[InlineData(0.19, true)]
+		[InlineData(0.2, false)]
+		[InlineData(0.61, false)]
+		[InlineData(0.98, false)]
+		public async Task A_book_chapter_is_hidden_only_when_jev_is_sure_it_is_not_the_book(double story, bool extra)
+		{
+			StubHttpMessageHandler handler = new(System.Net.HttpStatusCode.OK,
+				"{\"answers\":{\"q\":{\"type\":\"noul\",\"noul\":" + Number(story) + "}}}");
+
+			Assert.Equal(extra, await BookClassifier(handler).IsExtraAsync(Afterword));
+			Assert.Equal(1, handler.CallCount);
+		}
+
+		[Fact]
+		public async Task A_book_chapter_jev_cannot_judge_has_no_answer_so_the_book_is_asked_about_again()
+		{
+			Assert.Null(await BookClassifier(new FailingHttpMessageHandler()).IsExtraAsync(Afterword));
+			Assert.Null(await BookClassifier(new StubHttpMessageHandler(System.Net.HttpStatusCode.TooManyRequests, "")).IsExtraAsync(Afterword));
+		}
+
+		[Fact]
+		public void A_book_chapter_is_described_by_its_place_title_and_opening_or_its_pictures()
+		{
+			Assert.Equal(
+				"Book: Re:ZERO Vol. 26\nSection 12 of 13: Afterword\nIt begins:\nHello! This is Tappei Nagatsuki!",
+				JevBookChapterClassifier.Describe(Afterword).ReplaceLineEndings("\n"));
+			Assert.EndsWith(
+				"Section 3 of 13: Title Page\nNo text: 1 picture.",
+				JevBookChapterClassifier.Describe(new("Re:ZERO Vol. 26", 3, 13, "Title Page", "", 1)).ReplaceLineEndings("\n"));
 		}
 
 		[Fact]

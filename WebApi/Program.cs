@@ -57,6 +57,7 @@ namespace NovelReader
 				NovelReader.Data.Sqlite.ServiceCollectionExtension.AccountsDirectory(builder.Configuration),
 				"novelreader-books"));
 			builder.Services.AddSingleton<BookUploadService>();
+			builder.Services.AddSingleton<BookExtrasService>();
 
 			// The admin panel's sources (D45).
 			builder.Services.AddSingleton<ResponseTimeLog>();

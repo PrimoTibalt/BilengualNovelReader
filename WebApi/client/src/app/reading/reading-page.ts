@@ -139,6 +139,11 @@ export class ReadingPage implements AfterViewInit {
   #novels: readonly NovelSummary[] = [];
   /** The open novel's table of contents when it is an uploaded book; null for a site novel (D50). */
   #bookContents: BookContentsView | null = null;
+  /** Settles once the open novel's table of contents is known (or known not to exist). */
+  #contentsReady: Promise<void> = Promise.resolve();
+  /** Whether a book's extras — copyright, afterword and the like — are read on into and listed (D52). */
+  #showExtras = false;
+
   /** The open novel's chapters on this device, for the chapter menu (D51). */
   #downloadedChapters = new Set<number>();
 
@@ -178,6 +183,8 @@ export class ReadingPage implements AfterViewInit {
   protected readonly chapterUnavailable = signal<number | undefined>(undefined);
   /** Offline, a chapter that is not on the device: it loads once the connection is back (D51). */
   protected readonly chapterNotDownloaded = signal<number | undefined>(undefined);
+  /** Past an uploaded book's last chapter: there is nothing more to come (D52). */
+  protected readonly bookEnded = signal(false);
   /** The chapter after the last one published, once the reader has reached it (D49). */
   protected readonly noChapterYet = signal<number | undefined>(undefined);
   /** A word saved straight from a selection, with no box open to say so, until the server answers (D48). */
@@ -893,13 +900,17 @@ export class ReadingPage implements AfterViewInit {
       this.#describeCurrentNovel();
       void this.#loadDownloadedChapters(novel);
       this.#lastLoadedChapter = 0;
-      // Not awaited: the chapter menu is the only thing that reads it, and not before it is opened.
-      void this.#loadBookContents(novel);
+      // Not awaited here: only rolling on and the chapter menu read it, and they wait for it.
+      this.#contentsReady = this.#loadBookContents(novel);
       this.#reachedEnd = false;
+      this.bookEnded.set(false);
       this.noChapterYet.set(undefined);
 
-      if (resuming && paragraphNumber <= nearTopOfChapter && chapterNumber > 1) {
-        await this.#loadAndAppend(chapterNumber - 1);
+      const previous = resuming && paragraphNumber <= nearTopOfChapter && chapterNumber > 1
+        ? await this.#readableBefore(chapterNumber)
+        : undefined;
+      if (previous !== undefined) {
+        await this.#loadAndAppend(previous);
         // A missing predecessor is not a reason to stop; the wanted chapter still loads.
         this.#reachedEnd = false;
       }
@@ -1001,7 +1012,7 @@ export class ReadingPage implements AfterViewInit {
       return;
     }
 
-    this.#loadNextChapter(this.#lastLoadedChapter + 1);
+    void this.#rollForward();
   }
 
   #atBottom(): boolean {
@@ -1023,7 +1034,51 @@ export class ReadingPage implements AfterViewInit {
     await this.#waitForStableLayout();
     if (this.#loadingChapter || this.#reachedEnd || this.#retryUnavailable || !this.#atBottom()) return;
 
-    this.#loadNextChapter(this.#lastLoadedChapter + 1);
+    await this.#rollForward();
+  }
+
+  /**
+   * On to the next chapter to read: the next number for a site novel; for an uploaded book the
+   * next one that is not an extra — the copyright page and the afterword are passed over (D52) —
+   * and the end of the book after its last.
+   */
+  async #rollForward(): Promise<void> {
+    if (this.#loadingChapter || this.#reachedEnd) return;
+
+    await this.#contentsReady;
+    const contents = this.#currentContents();
+    if (contents === null) {
+      this.#loadNextChapter(this.#lastLoadedChapter + 1);
+      return;
+    }
+
+    const next = contents.chapters.find((chapter) => chapter.number > this.#lastLoadedChapter && this.#isReadable(chapter));
+    if (next !== undefined) {
+      this.#loadNextChapter(next.number);
+      return;
+    }
+
+    this.#reachedEnd = true;
+    this.bookEnded.set(true);
+  }
+
+  /** The chapter to show above a bookmark near the top of its chapter: the previous one that is read. */
+  async #readableBefore(chapterNumber: number): Promise<number | undefined> {
+    await this.#contentsReady;
+    const contents = this.#currentContents();
+    if (contents === null) return chapterNumber - 1;
+
+    const earlier = contents.chapters.filter((chapter) => chapter.number < chapterNumber && this.#isReadable(chapter));
+    return earlier.at(-1)?.number;
+  }
+
+  #currentContents(): BookContentsView | null {
+    const contents = this.#bookContents;
+    return contents !== null && contents.slug === this.#novelName ? contents : null;
+  }
+
+  #isReadable(chapter: { readonly extra: boolean }): boolean {
+    return this.#showExtras || !chapter.extra;
   }
 
   /**
@@ -1212,8 +1267,9 @@ export class ReadingPage implements AfterViewInit {
   }
 
   /**
-   * An uploaded book's chapters, all of them and by name: unlike a site novel, a book knows its
-   * table of contents (D50). A number typed into the filter still jumps straight there.
+   * An uploaded book's chapters by name: unlike a site novel, a book knows its table of contents
+   * (D50). Its extras — copyright, afterword, newsletter — are left out, behind a last row that
+   * brings them in (D52). A number typed into the filter still jumps straight to any chapter.
    */
   #bookChapterScreen(contents: BookContentsView): MenuScreen {
     const menu = this.navigationMenu();
@@ -1222,22 +1278,48 @@ export class ReadingPage implements AfterViewInit {
       menu.close();
       void this.#openNovelAt(this.#novelName, target, 1, false);
     };
+    const extras = contents.chapters.filter((chapter) => chapter.extra).length;
 
+    const items = (): MenuItem[] => {
+      const rows: MenuItem[] = contents.chapters
+        .filter((chapter) => this.#isReadable(chapter))
+        .map((chapter) => ({
+          label: chapter.title,
+          detail: [
+            chapter.number === current ? "current" : `${chapter.number}`,
+            chapter.extra ? "extra" : undefined,
+            this.#downloadedChapters.has(chapter.number) ? "offline" : undefined,
+          ].filter((part) => part !== undefined).join(" · "),
+          run: () => goTo(chapter.number),
+        }));
+
+      if (extras > 0) {
+        rows.push({
+          label: this.#showExtras ? "Hide the extras" : `Show ${extras} ${extras === 1 ? "extra" : "extras"}`,
+          detail: "copyright, afterword…",
+          run: () => {
+            // Also what reading on passes over, so the choice holds until the page is reloaded.
+            this.#showExtras = !this.#showExtras;
+            menu.setItems(items());
+          },
+        });
+      }
+      return rows;
+    };
+
+    const rows = items();
+    const currentRow = rows.findIndex((row) => row.detail?.startsWith("current"));
     return {
       title: "chapters",
-      items: contents.chapters.map((chapter) => ({
-        label: chapter.title,
-        detail: chapter.number === current
-          ? "current"
-          : this.#downloadedChapters.has(chapter.number) ? `${chapter.number} · offline` : `${chapter.number}`,
-        run: () => goTo(chapter.number),
-      })),
+      items: rows,
       filterPlaceholder: "chapter name or number…",
-      initialIndex: Math.max(0, current - 1),
+      initialIndex: Math.max(0, currentRow),
       itemsFromFilter: (text) => {
         const wanted = parseChapterNumber(text);
         const chapter = contents.chapters.find((candidate) => candidate.number === wanted);
-        return chapter === undefined ? [] : [{ label: chapter.title, detail: `${chapter.number}`, run: () => goTo(chapter.number) }];
+        return chapter === undefined || this.#isReadable(chapter)
+          ? []
+          : [{ label: chapter.title, detail: `${chapter.number} · extra`, run: () => goTo(chapter.number) }];
       },
     };
   }
