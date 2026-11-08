@@ -177,7 +177,9 @@ Chapter URLs are built as `novel/{novelName}/chapter-{chapterNumber}` against th
 A reader can upload an EPUB from the drawer (`app/books/upload-section`). `POST books?fileName=…`
 takes the file as the **raw request body**, not a form — ASP.NET buffers a multipart form to a
 temp file past 64 KB, and the file must never touch the server's disk. It is read into memory
-(64 MB limit, `[RequestSizeLimit]`; **nginx's `client_max_body_size` must allow it too**),
+(64 MB limit, `[RequestSizeLimit]`; **nginx needs `client_max_body_size 64m` and
+`proxy_request_buffering off`** in the `/reader` location — without the latter nginx itself
+spools the body to a temp file),
 parsed by `BookUploadService` and dropped. Rate-limited per reader (`AuthRateLimits.BookUpload`).
 
 - **Slug** `book--{16 hex}` (`UploadedBookSlug`): a valid `NovelSlug`, so bookmarks, the
